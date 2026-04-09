@@ -1,0 +1,1117 @@
+/*
+ * CSC 476 Lab 1 — Simple 3D collection game
+ * Third-person orbit cam, skybox, glTF character (bind pose + procedural motion), post FX.
+ */
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <iostream>
+#include <memory>
+#include <random>
+#include <vector>
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+#include "CharacterController.h"
+#include "GameWorld.h"
+#include "GltfMesh.h"
+#include "Skybox.h"
+#include "ThirdPersonCamera.h"
+#include "GLSL.h"
+#include "MatrixStack.h"
+#include "Program.h"
+#include "Shape.h"
+#include "Texture.h"
+#include "WindowManager.h"
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader/tiny_obj_loader.h>
+
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+using namespace std;
+using namespace glm;
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+static void computeNormals(tinyobj::mesh_t &mesh)
+{
+	vector<float> nor;
+	nor.resize(mesh.positions.size(), 0.0f);
+
+	for (size_t i = 0; i < mesh.indices.size() / 3; i++) {
+		unsigned int idx0 = mesh.indices[3 * i + 0];
+		unsigned int idx1 = mesh.indices[3 * i + 1];
+		unsigned int idx2 = mesh.indices[3 * i + 2];
+
+		vec3 v0(mesh.positions[3 * idx0 + 0], mesh.positions[3 * idx0 + 1], mesh.positions[3 * idx0 + 2]);
+		vec3 v1(mesh.positions[3 * idx1 + 0], mesh.positions[3 * idx1 + 1], mesh.positions[3 * idx1 + 2]);
+		vec3 v2(mesh.positions[3 * idx2 + 0], mesh.positions[3 * idx2 + 1], mesh.positions[3 * idx2 + 2]);
+
+		vec3 normal = cross(v1 - v0, v2 - v0);
+		nor[3 * idx0 + 0] += normal.x;
+		nor[3 * idx0 + 1] += normal.y;
+		nor[3 * idx0 + 2] += normal.z;
+		nor[3 * idx1 + 0] += normal.x;
+		nor[3 * idx1 + 1] += normal.y;
+		nor[3 * idx1 + 2] += normal.z;
+		nor[3 * idx2 + 0] += normal.x;
+		nor[3 * idx2 + 1] += normal.y;
+		nor[3 * idx2 + 2] += normal.z;
+	}
+
+	for (size_t i = 0; i < nor.size() / 3; i++) {
+		vec3 n(nor[3 * i + 0], nor[3 * i + 1], nor[3 * i + 2]);
+		if (length(n) > 0.0f)
+			n = normalize(n);
+		nor[3 * i + 0] = n.x;
+		nor[3 * i + 1] = n.y;
+		nor[3 * i + 2] = n.z;
+	}
+	mesh.normals = nor;
+}
+
+/** Ensure mesh has UVs for textured shading (planar XZ, course framework meshes often omit coords). */
+static void ensureTexcoordsXZ(tinyobj::shape_t &sh)
+{
+	size_t nv = sh.mesh.positions.size() / 3;
+	if (nv == 0)
+		return;
+	sh.mesh.texcoords.resize(nv * 2);
+	for (size_t i = 0; i < nv; i++) {
+		float x = sh.mesh.positions[3 * i + 0];
+		float z = sh.mesh.positions[3 * i + 2];
+		sh.mesh.texcoords[2 * i + 0] = x * 0.12f + 0.5f;
+		sh.mesh.texcoords[2 * i + 1] = z * 0.12f + 0.5f;
+	}
+}
+
+static shared_ptr<Shape> loadCollectibleMesh(const string &resourceDirectory, const char *primaryName, const char *fallbackName)
+{
+	vector<tinyobj::shape_t> shapes;
+	vector<tinyobj::material_t> materials;
+	string err;
+	string path = resourceDirectory + "/" + primaryName;
+	if (!tinyobj::LoadObj(shapes, materials, err, path.c_str())) {
+		cerr << "LoadObj failed (" << path << "): " << err << endl;
+		shapes.clear();
+		materials.clear();
+		err.clear();
+		path = resourceDirectory + "/" + fallbackName;
+		if (!tinyobj::LoadObj(shapes, materials, err, path.c_str())) {
+			cerr << "LoadObj failed (" << path << "): " << err << endl;
+			return nullptr;
+		}
+	}
+	if (shapes.empty())
+		return nullptr;
+
+	tinyobj::shape_t &sh = shapes[0];
+	if (sh.mesh.normals.empty())
+		computeNormals(sh.mesh);
+	ensureTexcoordsXZ(sh);
+
+	auto mesh = make_shared<Shape>();
+	mesh->createShape(sh);
+	mesh->measure();
+	mesh->init();
+	return mesh;
+}
+
+/** Tiled procedural ground ( RGB8, power-of-2 ), style similar to tiled terrain textures. */
+static GLuint makeGroundCheckerTexture(int size)
+{
+	vector<uint8_t> px(static_cast<size_t>(size * size * 3));
+	for (int y = 0; y < size; y++) {
+		for (int x = 0; x < size; x++) {
+			bool c = (((x / 32) + (y / 32)) & 1) == 0;
+			int i = (y * size + x) * 3;
+			if (c) {
+				px[static_cast<size_t>(i)] = 52;
+				px[static_cast<size_t>(i + 1)] = 72;
+				px[static_cast<size_t>(i + 2)] = 48;
+			} else {
+				px[static_cast<size_t>(i)] = 32;
+				px[static_cast<size_t>(i + 1)] = 48;
+				px[static_cast<size_t>(i + 2)] = 30;
+			}
+		}
+	}
+	GLuint tid = 0;
+	glGenTextures(1, &tid);
+	glBindTexture(GL_TEXTURE_2D, tid);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, size, size, 0, GL_RGB, GL_UNSIGNED_BYTE, px.data());
+	glGenerateMipmap(GL_TEXTURE_2D);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	return tid;
+}
+
+class Application : public EventCallbacks {
+public:
+	WindowManager *windowManager = nullptr;
+
+	~Application()
+	{
+		teardownPostProcess();
+		if (groundVao_)
+			glDeleteVertexArrays(1, &groundVao_);
+		if (groundVbo_)
+			glDeleteBuffers(1, &groundVbo_);
+		if (groundTexGl_)
+			glDeleteTextures(1, &groundTexGl_);
+		if (particleVao_)
+			glDeleteVertexArrays(1, &particleVao_);
+		if (particleVbo_)
+			glDeleteBuffers(1, &particleVbo_);
+	}
+
+	void init(const string &resourceDirectory)
+	{
+		resourceDir_ = resourceDirectory;
+		GLSL::checkVersion();
+		glClearColor(0.06f, 0.07f, 0.09f, 1.0f);
+		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_PROGRAM_POINT_SIZE);
+
+		sunWorld_ = vec3(6.0f, 18.0f, 10.0f);
+
+		// Lit texture pass (world-space Blinn-Phong, 471-style texture sampling)
+		texProg_ = make_shared<Program>();
+		texProg_->setVerbose(true);
+		texProg_->setShaderNames(resourceDirectory + "/tex_lit_world_vert.glsl",
+		                         resourceDirectory + "/tex_lit_world_frag.glsl");
+		if (!texProg_->init())
+			cerr << "texProg failed to link" << endl;
+		texProg_->addUniform("P");
+		texProg_->addUniform("V");
+		texProg_->addUniform("M");
+		texProg_->addUniform("Texture0");
+		texProg_->addUniform("lightPos");
+		texProg_->addUniform("camPos");
+		texProg_->addUniform("lightColor");
+	texProg_->addUniform("matAmbient");
+	texProg_->addUniform("matDiffuse");
+	texProg_->addUniform("matSpecular");
+	texProg_->addUniform("shininess");
+	texProg_->addUniform("tintColor");
+		texProg_->addUniform("emissiveStrength");
+		texProg_->addUniform("emissiveColor");
+		texProg_->addUniform("useEmissiveMap");
+	texProg_->addAttribute("vertPos");
+	texProg_->addAttribute("vertNor");
+	texProg_->addAttribute("vertTex");
+
+		collectibleTex_ = make_shared<Texture>();
+		collectibleTex_->setFilename(resourceDirectory + "/alpha.bmp");
+		collectibleTex_->init();
+		collectibleTex_->setUnit(0);
+		collectibleTex_->setWrapModes(GL_REPEAT, GL_REPEAT);
+
+		groundTexGl_ = makeGroundCheckerTexture(256);
+
+		skybox_.init(resourceDirectory, "sky_equirect.jpg");
+
+		charProg_ = make_shared<Program>();
+		charProg_->setVerbose(true);
+		charProg_->setShaderNames(resourceDirectory + "/tex_char_anim_vert.glsl",
+		                          resourceDirectory + "/tex_lit_world_frag.glsl");
+		if (!charProg_->init())
+			cerr << "charProg failed" << endl;
+		charProg_->addUniform("P");
+		charProg_->addUniform("V");
+		charProg_->addUniform("M");
+		charProg_->addUniform("Texture0");
+		charProg_->addUniform("lightPos");
+		charProg_->addUniform("camPos");
+		charProg_->addUniform("lightColor");
+		charProg_->addUniform("matAmbient");
+		charProg_->addUniform("matDiffuse");
+		charProg_->addUniform("matSpecular");
+		charProg_->addUniform("shininess");
+		charProg_->addUniform("tintColor");
+		charProg_->addUniform("emissiveStrength");
+		charProg_->addUniform("emissiveColor");
+		charProg_->addUniform("useEmissiveMap");
+		charProg_->addUniform("animPhase");
+		charProg_->addUniform("moveBlend");
+		charProg_->addAttribute("vertPos");
+		charProg_->addAttribute("vertNor");
+		charProg_->addAttribute("vertTex");
+
+		string glbPath = resourceDirectory + "/character.glb";
+		if (characterMesh_.loadFromFile(glbPath.c_str())) {
+			characterScale_ = characterMesh_.uniformScaleForHeight(1.65f);
+		} else {
+			cerr << "Optional: place character.glb in resources (Khronos RiggedFigure or similar)." << endl;
+		}
+
+		collectibleMesh_ = loadCollectibleMesh(resourceDirectory, "bunny.obj", "cube.obj");
+		if (!collectibleMesh_) {
+			cerr << "Fatal: could not load any collectible mesh." << endl;
+		}
+
+		initGroundMesh();
+
+		world_.setCollectibleMesh(collectibleMesh_, 0.35f);
+		world_.reset();
+		collectibleExploded_.clear();
+		particleBursts_.clear();
+		particlePositionsScratch_.clear();
+
+		particleProg_ = make_shared<Program>();
+		particleProg_->setVerbose(true);
+		particleProg_->setShaderNames(resourceDirectory + "/particle_vert.glsl",
+		                              resourceDirectory + "/particle_frag.glsl");
+		if (!particleProg_->init())
+			cerr << "particleProg failed" << endl;
+		particleProg_->addUniform("P");
+		particleProg_->addUniform("V");
+		particleProg_->addUniform("pointSize");
+		particleProg_->addUniform("particleColor");
+		particleProg_->addAttribute("vertPos");
+		glGenVertexArrays(1, &particleVao_);
+		glGenBuffers(1, &particleVbo_);
+		glBindVertexArray(particleVao_);
+		glBindBuffer(GL_ARRAY_BUFFER, particleVbo_);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 3 * 4096, nullptr, GL_DYNAMIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+		player_.setGroundY(GameWorld::kGroundY + 0.05f);
+		player_.setFeetPosition(vec3(0.0f, GameWorld::kGroundY + 0.05f, 6.0f));
+		thirdPersonCam_.setDistance(5.5f);
+		syncCameraFloorLimit();
+
+		initPostProcessShaders(resourceDirectory);
+
+		int fbW = 0, fbH = 0;
+		glfwGetFramebufferSize(windowManager->getHandle(), &fbW, &fbH);
+		setupPostProcess(fbW, fbH);
+
+		lastStatsPrint_ = 0.0;
+	}
+
+	void initPostProcessShaders(const string &resourceDirectory)
+	{
+		godrayProg_ = make_shared<Program>();
+		godrayProg_->setVerbose(true);
+		godrayProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
+		                           resourceDirectory + "/godray_frag.glsl");
+		if (!godrayProg_->init())
+			cerr << "godrayProg failed" << endl;
+		godrayProg_->addUniform("sceneTex");
+		godrayProg_->addUniform("sunPos");
+		godrayProg_->addUniform("time");
+
+		sunMaskProg_ = make_shared<Program>();
+		sunMaskProg_->setVerbose(true);
+		sunMaskProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
+		                             resourceDirectory + "/sunmask_frag.glsl");
+		if (!sunMaskProg_->init())
+			cerr << "sunMaskProg failed" << endl;
+		sunMaskProg_->addUniform("sunPos");
+
+		bloomBrightProg_ = make_shared<Program>();
+		bloomBrightProg_->setVerbose(true);
+		bloomBrightProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
+		                                 resourceDirectory + "/bloom_bright_frag.glsl");
+		if (!bloomBrightProg_->init())
+			cerr << "bloomBrightProg failed" << endl;
+		bloomBrightProg_->addUniform("sceneTex");
+
+		blurProg_ = make_shared<Program>();
+		blurProg_->setVerbose(true);
+		blurProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
+		                          resourceDirectory + "/blur_frag.glsl");
+		if (!blurProg_->init())
+			cerr << "blurProg failed" << endl;
+		blurProg_->addUniform("image");
+		blurProg_->addUniform("horizontal");
+		blurProg_->addUniform("texelSize");
+
+		compositeProg_ = make_shared<Program>();
+		compositeProg_->setVerbose(true);
+		compositeProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
+		                               resourceDirectory + "/composite_frag.glsl");
+		if (!compositeProg_->init())
+			cerr << "compositeProg failed" << endl;
+		compositeProg_->addUniform("sceneTex");
+		compositeProg_->addUniform("godrayTex");
+		compositeProg_->addUniform("bloomTex");
+		compositeProg_->addUniform("godrayStrength");
+		compositeProg_->addUniform("bloomStrength");
+	}
+
+	void teardownPostProcess()
+	{
+		if (quadVao_) {
+			glDeleteVertexArrays(1, &quadVao_);
+			quadVao_ = 0;
+		}
+		if (quadVbo_) {
+			glDeleteBuffers(1, &quadVbo_);
+			quadVbo_ = 0;
+		}
+		if (sceneFBO_) {
+			glDeleteFramebuffers(1, &sceneFBO_);
+			sceneFBO_ = 0;
+		}
+		if (sceneColorTex_) {
+			glDeleteTextures(1, &sceneColorTex_);
+			sceneColorTex_ = 0;
+		}
+		if (sceneDepthRBO_) {
+			glDeleteRenderbuffers(1, &sceneDepthRBO_);
+			sceneDepthRBO_ = 0;
+		}
+		if (godrayFBO_) {
+			glDeleteFramebuffers(1, &godrayFBO_);
+			godrayFBO_ = 0;
+		}
+		if (godrayTex_) {
+			glDeleteTextures(1, &godrayTex_);
+			godrayTex_ = 0;
+		}
+		if (godraySrcFBO_) {
+			glDeleteFramebuffers(1, &godraySrcFBO_);
+			godraySrcFBO_ = 0;
+		}
+		if (godraySrcTex_) {
+			glDeleteTextures(1, &godraySrcTex_);
+			godraySrcTex_ = 0;
+		}
+		for (int i = 0; i < 2; i++) {
+			if (pingpongFBO_[i]) {
+				glDeleteFramebuffers(1, &pingpongFBO_[i]);
+				pingpongFBO_[i] = 0;
+			}
+			if (pingpongTex_[i]) {
+				glDeleteTextures(1, &pingpongTex_[i]);
+				pingpongTex_[i] = 0;
+			}
+		}
+		postW_ = postH_ = 0;
+	}
+
+	void setupPostProcess(int w, int h)
+	{
+		if (w <= 0 || h <= 0)
+			return;
+		if (w == postW_ && h == postH_ && quadVao_)
+			return;
+
+		teardownPostProcess();
+		postW_ = w;
+		postH_ = h;
+
+		float quad[] = {
+			-1.f, -1.f, 0.f, 0.f,
+			1.f, -1.f, 1.f, 0.f,
+			1.f, 1.f, 1.f, 1.f,
+			-1.f, -1.f, 0.f, 0.f,
+			1.f, 1.f, 1.f, 1.f,
+			-1.f, 1.f, 0.f, 1.f,
+		};
+		glGenVertexArrays(1, &quadVao_);
+		glGenBuffers(1, &quadVbo_);
+		glBindVertexArray(quadVao_);
+		glBindBuffer(GL_ARRAY_BUFFER, quadVbo_);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+		glBindVertexArray(0);
+
+		glGenFramebuffers(1, &sceneFBO_);
+		glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO_);
+		glGenTextures(1, &sceneColorTex_);
+		glBindTexture(GL_TEXTURE_2D, sceneColorTex_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, w, h, 0, GL_RGB, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneColorTex_, 0);
+		glGenRenderbuffers(1, &sceneDepthRBO_);
+		glBindRenderbuffer(GL_RENDERBUFFER, sceneDepthRBO_);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, sceneDepthRBO_);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		glGenFramebuffers(1, &godrayFBO_);
+		glBindFramebuffer(GL_FRAMEBUFFER, godrayFBO_);
+		glGenTextures(1, &godrayTex_);
+		glBindTexture(GL_TEXTURE_2D, godrayTex_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, w, h, 0, GL_RGB, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, godrayTex_, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		glGenFramebuffers(1, &godraySrcFBO_);
+		glBindFramebuffer(GL_FRAMEBUFFER, godraySrcFBO_);
+		glGenTextures(1, &godraySrcTex_);
+		glBindTexture(GL_TEXTURE_2D, godraySrcTex_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, w, h, 0, GL_RGB, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, godraySrcTex_, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		int hw = std::max(1, w / 2);
+		int hh = std::max(1, h / 2);
+		glGenFramebuffers(2, pingpongFBO_);
+		glGenTextures(2, pingpongTex_);
+		for (int i = 0; i < 2; i++) {
+			glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO_[i]);
+			glBindTexture(GL_TEXTURE_2D, pingpongTex_[i]);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, hw, hh, 0, GL_RGB, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongTex_[i], 0);
+		}
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+
+	void initGroundMesh()
+	{
+		const float h = GameWorld::kGridHalf;
+		const float tu = 14.0f;
+		float verts[] = {
+			-h, 0.0f, -h, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+			h, 0.0f, -h, 0.0f, 1.0f, 0.0f, tu, 0.0f,
+			h, 0.0f, h, 0.0f, 1.0f, 0.0f, tu, tu,
+			-h, 0.0f, -h, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+			h, 0.0f, h, 0.0f, 1.0f, 0.0f, tu, tu,
+			-h, 0.0f, h, 0.0f, 1.0f, 0.0f, 0.0f, tu,
+		};
+
+		glGenVertexArrays(1, &groundVao_);
+		glBindVertexArray(groundVao_);
+		glGenBuffers(1, &groundVbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, groundVbo_);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+
+		GLint posLoc = texProg_->getAttribute("vertPos");
+		GLint norLoc = texProg_->getAttribute("vertNor");
+		GLint texLoc = texProg_->getAttribute("vertTex");
+		const GLsizei stride = static_cast<GLsizei>(8 * sizeof(float));
+		glEnableVertexAttribArray(posLoc);
+		glVertexAttribPointer(posLoc, 3, GL_FLOAT, GL_FALSE, stride, (const void *)0);
+		glEnableVertexAttribArray(norLoc);
+		glVertexAttribPointer(norLoc, 3, GL_FLOAT, GL_FALSE, stride, (const void *)(3 * sizeof(float)));
+		glEnableVertexAttribArray(texLoc);
+		glVertexAttribPointer(texLoc, 2, GL_FLOAT, GL_FALSE, stride, (const void *)(6 * sizeof(float)));
+
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindVertexArray(0);
+	}
+
+	void drawFullscreenQuad()
+	{
+		glDisable(GL_DEPTH_TEST);
+		glBindVertexArray(quadVao_);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
+		glEnable(GL_DEPTH_TEST);
+	}
+
+	void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) override
+	{
+		(void)scancode;
+		(void)mods;
+		if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+			mouseLocked_ = false;
+			firstMouse_ = true;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		}
+
+		if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
+			player_.tryJump();
+
+		auto setKey = [&](int k, bool down) {
+			if (k == GLFW_KEY_W || k == GLFW_KEY_UP)
+				keyW_ = down;
+			else if (k == GLFW_KEY_S || k == GLFW_KEY_DOWN)
+				keyS_ = down;
+			else if (k == GLFW_KEY_A || k == GLFW_KEY_LEFT)
+				keyA_ = down;
+			else if (k == GLFW_KEY_D || k == GLFW_KEY_RIGHT)
+				keyD_ = down;
+		};
+
+		if (action == GLFW_PRESS || action == GLFW_REPEAT)
+			setKey(key, true);
+		else if (action == GLFW_RELEASE)
+			setKey(key, false);
+
+		if (key == GLFW_KEY_Z && action == GLFW_PRESS)
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		if (key == GLFW_KEY_Z && action == GLFW_RELEASE)
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+		if (key == GLFW_KEY_T && action == GLFW_PRESS) {
+			idleYawHoldEnabled_ = !idleYawHoldEnabled_;
+			cout << "[Camera yaw on idle] " << (idleYawHoldEnabled_ ? "hold after stillness (T)" : "always face camera (T)") << endl;
+		}
+	}
+
+	void mouseCallback(GLFWwindow *window, int button, int action, int mods) override
+	{
+		(void)mods;
+		if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+			mouseLocked_ = true;
+			firstMouse_ = true;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		}
+	}
+
+	void resizeCallback(GLFWwindow *window, int width, int height) override
+	{
+		(void)window;
+		glViewport(0, 0, width, height);
+		int fbW = 0, fbH = 0;
+		glfwGetFramebufferSize(windowManager->getHandle(), &fbW, &fbH);
+		setupPostProcess(fbW, fbH);
+	}
+
+	void cursorPosCallback(GLFWwindow *window, double xpos, double ypos) override
+	{
+		(void)window;
+		if (!mouseLocked_)
+			return;
+		if (firstMouse_) {
+			lastMouseX_ = xpos;
+			lastMouseY_ = ypos;
+			firstMouse_ = false;
+			return;
+		}
+		double dx = xpos - lastMouseX_;
+		double dy = lastMouseY_ - ypos;
+		lastMouseX_ = xpos;
+		lastMouseY_ = ypos;
+		thirdPersonCam_.processMouseMovement(dx, dy);
+		syncCameraFloorLimit();
+	}
+
+	void scrollCallback(GLFWwindow *window, double xoffset, double yoffset) override
+	{
+		(void)window;
+		(void)xoffset;
+		thirdPersonCam_.processScroll(yoffset);
+		syncCameraFloorLimit();
+	}
+
+	void updateFixedStep(float dt)
+	{
+		vec3 f = thirdPersonCam_.getMoveForwardXZ();
+		vec3 r = thirdPersonCam_.getMoveRightXZ();
+		vec3 wish = f * (static_cast<float>(keyW_) - static_cast<float>(keyS_)) + r * (static_cast<float>(keyD_) - static_cast<float>(keyA_));
+		player_.physicsStep(dt, wish);
+
+		vec3 p = player_.getFeetPosition();
+		const float lim = GameWorld::kGridHalf - 0.5f;
+		p.x = std::max(-lim, std::min(lim, p.x));
+		p.z = std::max(-lim, std::min(lim, p.z));
+		player_.setFeetPosition(p);
+		player_.setGroundY(GameWorld::kGroundY + 0.05f);
+
+		vec3 collectFeet = p + vec3(0.0f, 0.4f, 0.0f);
+		world_.step(dt, collectFeet, 0.45f);
+		if (collectibleExploded_.size() < world_.getObjects().size())
+			collectibleExploded_.resize(world_.getObjects().size(), 0);
+		for (size_t i = 0; i < world_.getObjects().size(); ++i) {
+			const auto &obj = world_.getObjects()[i];
+			if (obj.isCollected() && collectibleExploded_[i] == 0) {
+				spawnCollectionBurst(obj.getPosition());
+				collectibleExploded_[i] = 1;
+			}
+		}
+		updateParticleBursts(dt);
+
+		vec2 hv(player_.getHorizontalVelocity().x, player_.getHorizontalVelocity().z);
+		float hspeed = glm::length(hv);
+		const bool moveInput = keyW_ || keyS_ || keyA_ || keyD_;
+		const bool moving = moveInput || hspeed > 0.2f;
+		if (moving)
+			idleSecondsAccum_ = 0.0f;
+		else
+			idleSecondsAccum_ += dt;
+
+		if (hspeed > 0.2f) {
+			charYaw_ = std::atan2(player_.getHorizontalVelocity().x, player_.getHorizontalVelocity().z);
+		} else {
+			const bool alignToCamera = !idleYawHoldEnabled_ || idleSecondsAccum_ < kIdleYawHoldSeconds;
+			if (alignToCamera) {
+				float targetYaw = std::atan2(f.x, f.z);
+				float d = targetYaw - charYaw_;
+				while (d > static_cast<float>(M_PI))
+					d -= 2.0f * static_cast<float>(M_PI);
+				while (d < -static_cast<float>(M_PI))
+					d += 2.0f * static_cast<float>(M_PI);
+				charYaw_ += d * 0.06f;
+			}
+		}
+		animTime_ += dt;
+		moveBlendDisplay_ = std::min(1.0f, hspeed / 4.5f);
+
+		syncCameraFloorLimit();
+	}
+
+	void drawScene3D(const mat4 &P, const mat4 &V)
+	{
+		vec3 pivot = player_.getFeetPosition() + vec3(0.0f, cameraPivotHeight_, 0.0f);
+		vec3 eye = thirdPersonCam_.getEye(pivot);
+		mat4 Vsky = glm::mat4(glm::mat3(V));
+
+		skybox_.draw(P, Vsky);
+
+		vec3 lightColor(1.0f, 0.98f, 0.92f);
+
+		texProg_->bind();
+		glUniformMatrix4fv(texProg_->getUniform("P"), 1, GL_FALSE, value_ptr(P));
+		glUniformMatrix4fv(texProg_->getUniform("V"), 1, GL_FALSE, value_ptr(V));
+		glUniform3fv(texProg_->getUniform("lightPos"), 1, value_ptr(sunWorld_));
+		glUniform3fv(texProg_->getUniform("camPos"), 1, value_ptr(eye));
+		glUniform3fv(texProg_->getUniform("lightColor"), 1, value_ptr(lightColor));
+
+		// Ground
+		{
+			mat4 M(1.0f);
+			glUniformMatrix4fv(texProg_->getUniform("M"), 1, GL_FALSE, value_ptr(M));
+			glUniform3f(texProg_->getUniform("matAmbient"), 0.08f, 0.1f, 0.07f);
+			glUniform3f(texProg_->getUniform("matDiffuse"), 0.85f, 0.88f, 0.82f);
+			glUniform3f(texProg_->getUniform("matSpecular"), 0.12f, 0.14f, 0.1f);
+			glUniform1f(texProg_->getUniform("shininess"), 10.0f);
+			glUniform3f(texProg_->getUniform("tintColor"), 1.0f, 1.0f, 1.0f);
+			glUniform1f(texProg_->getUniform("emissiveStrength"), 0.0f);
+			glUniform3f(texProg_->getUniform("emissiveColor"), 0.0f, 0.0f, 0.0f);
+			glUniform1i(texProg_->getUniform("useEmissiveMap"), 0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, groundTexGl_);
+			glUniform1i(texProg_->getUniform("Texture0"), 0);
+			glBindVertexArray(groundVao_);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glBindVertexArray(0);
+		}
+
+		// Collectibles (471 alpha.bmp + tint for state)
+		if (collectibleTex_ && collectibleTex_->getID() != 0)
+			collectibleTex_->bind(texProg_->getUniform("Texture0"));
+		else {
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, groundTexGl_);
+			glUniform1i(texProg_->getUniform("Texture0"), 0);
+		}
+
+		for (const auto &obj : world_.getObjects()) {
+			if (!obj.getShape() || obj.isCollected())
+				continue;
+			mat4 M = obj.getModelMatrix();
+			glUniformMatrix4fv(texProg_->getUniform("M"), 1, GL_FALSE, value_ptr(M));
+			glUniform3fv(texProg_->getUniform("matAmbient"), 1, value_ptr(obj.getAmbient()));
+			glUniform3fv(texProg_->getUniform("matDiffuse"), 1, value_ptr(obj.getDiffuse()));
+			glUniform3fv(texProg_->getUniform("matSpecular"), 1, value_ptr(obj.getSpecular()));
+			glUniform1f(texProg_->getUniform("shininess"), obj.getShininess());
+			vec3 tint(1.0f, 0.92f, 0.82f);
+			float glowPulse = 0.8f + 0.2f * std::sin(animTime_ * 6.0f);
+			glUniform1f(texProg_->getUniform("emissiveStrength"), 8.5f * glowPulse);
+			glUniform3f(texProg_->getUniform("emissiveColor"), 0.65f, 1.15f, 1.85f);
+			glUniform1i(texProg_->getUniform("useEmissiveMap"), 0);
+			glUniform3fv(texProg_->getUniform("tintColor"), 1, value_ptr(tint));
+			obj.getShape()->draw(texProg_);
+		}
+
+		texProg_->unbind();
+
+		// Player character (glTF bind pose + procedural vertex motion)
+		if (characterMesh_.valid()) {
+			charProg_->bind();
+			glUniformMatrix4fv(charProg_->getUniform("P"), 1, GL_FALSE, value_ptr(P));
+			glUniformMatrix4fv(charProg_->getUniform("V"), 1, GL_FALSE, value_ptr(V));
+			glUniform3fv(charProg_->getUniform("lightPos"), 1, value_ptr(sunWorld_));
+			glUniform3fv(charProg_->getUniform("camPos"), 1, value_ptr(eye));
+			glUniform3fv(charProg_->getUniform("lightColor"), 1, value_ptr(lightColor));
+			glUniform1f(charProg_->getUniform("animPhase"), animTime_);
+			glUniform1f(charProg_->getUniform("moveBlend"), moveBlendDisplay_);
+			glUniform3f(charProg_->getUniform("matAmbient"), 0.12f, 0.12f, 0.14f);
+			glUniform3f(charProg_->getUniform("matDiffuse"), 0.75f, 0.78f, 0.85f);
+			glUniform3f(charProg_->getUniform("matSpecular"), 0.25f, 0.25f, 0.3f);
+			glUniform1f(charProg_->getUniform("shininess"), 24.0f);
+			glUniform3f(charProg_->getUniform("tintColor"), 1.0f, 1.0f, 1.0f);
+			glUniform1f(charProg_->getUniform("emissiveStrength"), 0.0f);
+			glUniform3f(charProg_->getUniform("emissiveColor"), 0.0f, 0.0f, 0.0f);
+			glUniform1i(charProg_->getUniform("useEmissiveMap"), 0);
+			mat4 M = translate(mat4(1.0f), player_.getFeetPosition()) * rotate(mat4(1.0f), charYaw_, vec3(0.0f, 1.0f, 0.0f))
+			         * translate(mat4(1.0f), -characterMesh_.pivotLocal()) * scale(mat4(1.0f), vec3(characterScale_));
+			glUniformMatrix4fv(charProg_->getUniform("M"), 1, GL_FALSE, value_ptr(M));
+			if (collectibleTex_ && collectibleTex_->getID() != 0)
+				collectibleTex_->bind(charProg_->getUniform("Texture0"));
+			else {
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, groundTexGl_);
+				glUniform1i(charProg_->getUniform("Texture0"), 0);
+			}
+			characterMesh_.draw(charProg_);
+			charProg_->unbind();
+		}
+
+		drawParticleBursts(P, V);
+	}
+
+	void render()
+	{
+		int width = 0, height = 0;
+		glfwGetFramebufferSize(windowManager->getHandle(), &width, &height);
+		if (width <= 0 || height <= 0 || sceneFBO_ == 0)
+			return;
+
+		float aspect = width / (float)height;
+		MatrixStack Pstack;
+		Pstack.pushMatrix();
+		Pstack.perspective(70.0f, aspect, 0.1f, 200.0f);
+		mat4 P = Pstack.topMatrix();
+		vec3 pivot = player_.getFeetPosition() + vec3(0.0f, cameraPivotHeight_, 0.0f);
+		mat4 V = thirdPersonCam_.getViewMatrix(pivot);
+		Pstack.popMatrix();
+
+		// --- Scene HDR framebuffer (brighter clear helps god-ray mask) ---
+		glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO_);
+		glViewport(0, 0, postW_, postH_);
+		glClearColor(0.24f, 0.3f, 0.42f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		drawScene3D(P, V);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		vec4 sunClip = P * V * vec4(sunWorld_, 1.0f);
+		vec2 sunScreen(0.5f, 0.55f);
+		if (std::abs(sunClip.w) > 0.001f) {
+			sunScreen = vec2((sunClip.x / sunClip.w) * 0.5f + 0.5f, (sunClip.y / sunClip.w) * 0.5f + 0.5f);
+		}
+
+		// --- God rays ---
+		glBindFramebuffer(GL_FRAMEBUFFER, godraySrcFBO_);
+		glViewport(0, 0, postW_, postH_);
+		glClearColor(0.18f, 0.22f, 0.34f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		sunMaskProg_->bind();
+		glUniform2f(sunMaskProg_->getUniform("sunPos"), sunScreen.x, sunScreen.y);
+		drawFullscreenQuad();
+		sunMaskProg_->unbind();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// --- God rays (from sun mask, not full scene) ---
+		glBindFramebuffer(GL_FRAMEBUFFER, godrayFBO_);
+		glViewport(0, 0, postW_, postH_);
+		glClear(GL_COLOR_BUFFER_BIT);
+		godrayProg_->bind();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, godraySrcTex_);
+		glUniform1i(godrayProg_->getUniform("sceneTex"), 0);
+		glUniform2f(godrayProg_->getUniform("sunPos"), sunScreen.x, sunScreen.y);
+		glUniform1f(godrayProg_->getUniform("time"), (float)glfwGetTime());
+		drawFullscreenQuad();
+		godrayProg_->unbind();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// --- Bloom extract ---
+		int hw = std::max(1, postW_ / 2);
+		int hh = std::max(1, postH_ / 2);
+		glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO_[0]);
+		glViewport(0, 0, hw, hh);
+		glClear(GL_COLOR_BUFFER_BIT);
+		bloomBrightProg_->bind();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, sceneColorTex_);
+		glUniform1i(bloomBrightProg_->getUniform("sceneTex"), 0);
+		drawFullscreenQuad();
+		bloomBrightProg_->unbind();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// --- Blur ping-pong (source: bloom in pingpongTex_[0]) ---
+		blurProg_->bind();
+		glUniform2f(blurProg_->getUniform("texelSize"), 1.0f / (float)hw, 1.0f / (float)hh);
+		int lastBuf = 0;
+		bool horizontal = true;
+		for (int i = 0; i < 10; i++) {
+			int target = 1 - lastBuf;
+			glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO_[target]);
+			glViewport(0, 0, hw, hh);
+			glUniform1i(blurProg_->getUniform("horizontal"), horizontal ? 1 : 0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, pingpongTex_[lastBuf]);
+			glUniform1i(blurProg_->getUniform("image"), 0);
+			drawFullscreenQuad();
+			lastBuf = target;
+			horizontal = !horizontal;
+		}
+		blurProg_->unbind();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// --- Composite to default framebuffer ---
+		glViewport(0, 0, width, height);
+		glClearColor(0.06f, 0.07f, 0.09f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		compositeProg_->bind();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, sceneColorTex_);
+		glUniform1i(compositeProg_->getUniform("sceneTex"), 0);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, godrayTex_);
+		glUniform1i(compositeProg_->getUniform("godrayTex"), 1);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, pingpongTex_[lastBuf]);
+		glUniform1i(compositeProg_->getUniform("bloomTex"), 2);
+		glUniform1f(compositeProg_->getUniform("godrayStrength"), 1.35f);
+		glUniform1f(compositeProg_->getUniform("bloomStrength"), 1.6f);
+		drawFullscreenQuad();
+		compositeProg_->unbind();
+	}
+
+	void printStats(double elapsedTotal)
+	{
+		if (elapsedTotal - lastStatsPrint_ < 0.4)
+			return;
+		lastStatsPrint_ = elapsedTotal;
+		cout << "[Game] active(on ground)=" << world_.getActiveObjectCount()
+		     << "  collected(score)=" << world_.getCollectedCount()
+		     << "  total_spawned=" << world_.getTotalSpawned()
+		     << "  move_speed=" << player_.getMoveSpeed()
+		     << "  cam_dist=" << thirdPersonCam_.getDistance()
+		     << "  jumps_remaining=" << player_.getJumpsRemaining()
+		     << "  vy=" << player_.getVerticalVelocity()
+		     << endl;
+	}
+
+private:
+	struct Particle {
+		vec3 pos;
+		vec3 vel;
+		float life;
+		float maxLife;
+	};
+
+	struct ParticleBurst {
+		vector<Particle> particles;
+	};
+
+	void spawnCollectionBurst(const vec3 &origin)
+	{
+		ParticleBurst burst;
+		burst.particles.reserve(72);
+		for (int i = 0; i < 72; ++i) {
+			float ang = distYaw_(rngParticles_);
+			float up = distUp_(rngParticles_);
+			float speed = distSpeed_(rngParticles_);
+			vec3 dir(std::sin(ang), up, std::cos(ang));
+			if (length(dir) < 1e-4f)
+				dir = vec3(0.0f, 1.0f, 0.0f);
+			dir = normalize(dir);
+			Particle p;
+			p.pos = origin + vec3(0.0f, 0.2f, 0.0f);
+			p.vel = dir * speed;
+			p.maxLife = 0.95f + 0.45f * distUnit_(rngParticles_);
+			p.life = p.maxLife;
+			burst.particles.push_back(p);
+		}
+		particleBursts_.push_back(std::move(burst));
+	}
+
+	void updateParticleBursts(float dt)
+	{
+		const vec3 gravity(0.0f, -12.0f, 0.0f);
+		for (auto &burst : particleBursts_) {
+			for (auto &p : burst.particles) {
+				p.life -= dt;
+				if (p.life <= 0.0f)
+					continue;
+				p.vel += gravity * dt;
+				p.pos += p.vel * dt;
+				if (p.pos.y < GameWorld::kGroundY + 0.02f) {
+					p.pos.y = GameWorld::kGroundY + 0.02f;
+					p.vel.y *= -0.28f;
+					p.vel.x *= 0.75f;
+					p.vel.z *= 0.75f;
+				}
+			}
+		}
+		particleBursts_.erase(
+			std::remove_if(particleBursts_.begin(), particleBursts_.end(), [](const ParticleBurst &b) {
+				for (const auto &p : b.particles) {
+					if (p.life > 0.0f)
+						return false;
+				}
+				return true;
+			}),
+			particleBursts_.end());
+	}
+
+	void drawParticleBursts(const mat4 &P, const mat4 &V)
+	{
+		if (!particleProg_ || particleBursts_.empty())
+			return;
+		particlePositionsScratch_.clear();
+		for (const auto &burst : particleBursts_) {
+			for (const auto &p : burst.particles) {
+				if (p.life <= 0.0f)
+					continue;
+				particlePositionsScratch_.push_back(p.pos);
+			}
+		}
+		if (particlePositionsScratch_.empty())
+			return;
+
+		particleProg_->bind();
+		glUniformMatrix4fv(particleProg_->getUniform("P"), 1, GL_FALSE, value_ptr(P));
+		glUniformMatrix4fv(particleProg_->getUniform("V"), 1, GL_FALSE, value_ptr(V));
+		glUniform1f(particleProg_->getUniform("pointSize"), 220.0f);
+		glUniform3f(particleProg_->getUniform("particleColor"), 0.65f, 1.15f, 1.85f);
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		glDepthMask(GL_FALSE);
+		glBindVertexArray(particleVao_);
+		glBindBuffer(GL_ARRAY_BUFFER, particleVbo_);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(particlePositionsScratch_.size() * sizeof(vec3)), particlePositionsScratch_.data());
+		glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(particlePositionsScratch_.size()));
+		glBindVertexArray(0);
+		glDepthMask(GL_TRUE);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDisable(GL_BLEND);
+		particleProg_->unbind();
+	}
+
+	void syncCameraFloorLimit()
+	{
+		vec3 pivot = player_.getFeetPosition() + vec3(0.0f, cameraPivotHeight_, 0.0f);
+		thirdPersonCam_.applyFloorConstraint(GameWorld::kGroundY + 0.02f, pivot.y);
+	}
+
+	string resourceDir_;
+
+	float cameraPivotHeight_ = 1.15f;
+	float charYaw_ = 0.0f;
+	float animTime_ = 0.0f;
+	float moveBlendDisplay_ = 0.0f;
+	float characterScale_ = 1.0f;
+
+	ThirdPersonCamera thirdPersonCam_;
+	CharacterController player_;
+	Skybox skybox_;
+	GltfMesh characterMesh_;
+	shared_ptr<Program> charProg_;
+
+	shared_ptr<Program> texProg_;
+	shared_ptr<Program> godrayProg_, bloomBrightProg_, blurProg_, compositeProg_;
+	shared_ptr<Program> particleProg_;
+	shared_ptr<Program> sunMaskProg_;
+
+	shared_ptr<Texture> collectibleTex_;
+	GLuint groundTexGl_ = 0;
+
+	shared_ptr<Shape> collectibleMesh_;
+
+	GLuint groundVao_ = 0;
+	GLuint groundVbo_ = 0;
+
+	vec3 sunWorld_;
+
+	GLuint quadVao_ = 0, quadVbo_ = 0;
+	GLuint particleVao_ = 0, particleVbo_ = 0;
+	GLuint sceneFBO_ = 0, sceneColorTex_ = 0, sceneDepthRBO_ = 0;
+	GLuint godrayFBO_ = 0, godrayTex_ = 0;
+	GLuint godraySrcFBO_ = 0, godraySrcTex_ = 0;
+	GLuint pingpongFBO_[2] = {0, 0};
+	GLuint pingpongTex_[2] = {0, 0};
+	int postW_ = 0, postH_ = 0;
+
+	GameWorld world_;
+	vector<uint8_t> collectibleExploded_;
+	vector<ParticleBurst> particleBursts_;
+	vector<vec3> particlePositionsScratch_;
+	std::mt19937 rngParticles_{std::random_device{}()};
+	std::uniform_real_distribution<float> distUnit_{0.0f, 1.0f};
+	std::uniform_real_distribution<float> distYaw_{0.0f, static_cast<float>(2.0 * M_PI)};
+	std::uniform_real_distribution<float> distUp_{0.2f, 1.2f};
+	std::uniform_real_distribution<float> distSpeed_{2.5f, 7.2f};
+
+	bool keyW_ = false, keyS_ = false, keyA_ = false, keyD_ = false;
+
+	/** After this many seconds with no move input and low horizontal speed, idle avatar stops turning to face the camera (orbit to see front). Toggle with T. */
+	static constexpr float kIdleYawHoldSeconds = 2.0f;
+	bool idleYawHoldEnabled_ = true;
+	float idleSecondsAccum_ = 0.0f;
+
+	bool mouseLocked_ = false;
+	bool firstMouse_ = true;
+	double lastMouseX_ = 0.0, lastMouseY_ = 0.0;
+
+	double lastStatsPrint_ = 0.0;
+};
+
+int main(int argc, char *argv[])
+{
+	string resourceDir = "../resources";
+	if (argc >= 2)
+		resourceDir = argv[1];
+
+	auto *application = new Application();
+	WindowManager *windowManager = new WindowManager();
+	if (!windowManager->init(1280, 720)) {
+		cerr << "Window / GL init failed." << endl;
+		return -1;
+	}
+	windowManager->setEventCallbacks(application);
+	application->windowManager = windowManager;
+	application->init(resourceDir);
+
+	using clock = chrono::high_resolution_clock;
+	auto tPrev = clock::now();
+	const double fixedDt = 1.0 / 60.0;
+	double accumulator = 0.0;
+	double elapsedStats = 0.0;
+
+	while (!glfwWindowShouldClose(windowManager->getHandle())) {
+		auto tNow = clock::now();
+		chrono::duration<double> frame = tNow - tPrev;
+		tPrev = tNow;
+		double frameTime = std::min(frame.count(), 0.25);
+		accumulator += frameTime;
+		elapsedStats += frameTime;
+
+		while (accumulator >= fixedDt) {
+			application->updateFixedStep(static_cast<float>(fixedDt));
+			accumulator -= fixedDt;
+		}
+
+		application->render();
+		application->printStats(elapsedStats);
+
+		glfwSwapBuffers(windowManager->getHandle());
+		glfwPollEvents();
+	}
+
+	windowManager->shutdown();
+	delete application;
+	delete windowManager;
+	return 0;
+}
