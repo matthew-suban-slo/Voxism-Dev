@@ -543,6 +543,9 @@ public:
 			mouseLocked_ = false;
 			firstMouse_ = true;
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			if (glfwRawMouseMotionSupported()) {
+				glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+			}
 		}
 
 		if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
@@ -559,7 +562,7 @@ public:
 				keyD_ = down;
 		};
 
-		if (action == GLFW_PRESS || action == GLFW_REPEAT)
+		if (action == GLFW_PRESS)
 			setKey(key, true);
 		else if (action == GLFW_RELEASE)
 			setKey(key, false);
@@ -582,6 +585,9 @@ public:
 			mouseLocked_ = true;
 			firstMouse_ = true;
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			if (glfwRawMouseMotionSupported()) {
+				glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+			}
 		}
 	}
 
@@ -597,8 +603,9 @@ public:
 	void cursorPosCallback(GLFWwindow *window, double xpos, double ypos) override
 	{
 		(void)window;
-		if (!mouseLocked_)
+		if (!mouseLocked_){
 			return;
+		}
 		if (firstMouse_) {
 			lastMouseX_ = xpos;
 			lastMouseY_ = ypos;
@@ -623,6 +630,7 @@ public:
 
 	void updateFixedStep(float dt)
 	{
+		// Player Movements
 		vec3 f = thirdPersonCam_.getMoveForwardXZ();
 		vec3 r = thirdPersonCam_.getMoveRightXZ();
 		vec3 wish = f * (static_cast<float>(keyW_) - static_cast<float>(keyS_)) + r * (static_cast<float>(keyD_) - static_cast<float>(keyA_));
@@ -630,6 +638,7 @@ public:
 
 		vec3 p = player_.getFeetPosition();
 		const float lim = GameWorld::kGridHalf - 0.5f;
+		// TODO: replace with clamp.
 		p.x = std::max(-lim, std::min(lim, p.x));
 		p.z = std::max(-lim, std::min(lim, p.z));
 		player_.setFeetPosition(p);
@@ -646,6 +655,8 @@ public:
 				collectibleExploded_[i] = 1;
 			}
 		}
+		
+		// 
 		updateParticleBursts(dt);
 
 		vec2 hv(player_.getHorizontalVelocity().x, player_.getHorizontalVelocity().z);
@@ -943,7 +954,7 @@ private:
 			for (auto &p : burst.particles) {
 				p.life -= dt;
 				if (p.life <= 0.0f)
-					continue;
+					continue;particleBursts_;
 				p.vel += gravity * dt;
 				p.pos += p.vel * dt;
 				if (p.pos.y < GameWorld::kGroundY + 0.02f) {
@@ -1090,8 +1101,10 @@ int main(int argc, char *argv[])
 	double accumulator = 0.0;
 	double elapsedStats = 0.0;
 
+	std::cout << "Platform: " << glfwGetPlatform() << std::endl;
 	while (!glfwWindowShouldClose(windowManager->getHandle())) {
 		auto tNow = clock::now();
+		glfwPollEvents();
 		chrono::duration<double> frame = tNow - tPrev;
 		tPrev = tNow;
 		double frameTime = std::min(frame.count(), 0.25);
@@ -1107,7 +1120,6 @@ int main(int argc, char *argv[])
 		application->printStats(elapsedStats);
 
 		glfwSwapBuffers(windowManager->getHandle());
-		glfwPollEvents();
 	}
 
 	windowManager->shutdown();

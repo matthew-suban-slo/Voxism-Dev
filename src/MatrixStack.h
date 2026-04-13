@@ -5,6 +5,7 @@
 
 #include <stack>
 #include <memory>
+#include <stdio.h>
 
 #include "glm/glm.hpp"
 #include "glm/vec4.hpp"
