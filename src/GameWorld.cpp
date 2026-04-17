@@ -92,6 +92,7 @@ void GameWorld::trySpawn()
 
 void GameWorld::resolveWallCollisions(GameObject &obj)
 {
+	// if object is not collidable or doesn't have volume. SKIP
 	if (obj.isCollected() || !obj.getShape())
 		return;
 
@@ -103,23 +104,29 @@ void GameWorld::resolveWallCollisions(GameObject &obj)
 		glm::vec3 vel = obj.getVelocity();
 		bool changed = false;
 
+		// Adds padding to get seperation from the wall.
+		// Only flips velocity if moving into the wall.
 		if (box.min.x < -kGridHalf + pad) {
-			pos.x += (-kGridHalf + pad) - box.min.x;
-			vel.x = -vel.x;
+			pos.x += pad;
+			// pos.x += (-kGridHalf + pad) - box.min.x;
+			if (vel.x < 0.0f) vel.x = -vel.x;
 			changed = true;
 		} else if (box.max.x > kGridHalf - pad) {
-			pos.x -= box.max.x - (kGridHalf - pad);
-			vel.x = -vel.x;
+			pos.x -= pad;
+			// pos.x -= box.max.x - (kGridHalf - pad);
+			if (vel.x > 0.0f) vel.x = -vel.x;
 			changed = true;
 		}
 
 		if (box.min.z < -kGridHalf + pad) {
-			pos.z += (-kGridHalf + pad) - box.min.z;
-			vel.z = -vel.z;
+			pos.z += pad;
+			// pos.z += (-kGridHalf + pad) - box.min.z;
+			if (vel.z < 0.0f) vel.z = -vel.z;
 			changed = true;
 		} else if (box.max.z > kGridHalf - pad) {
-			pos.z -= box.max.z - (kGridHalf - pad);
-			vel.z = -vel.z;
+			pos.z -= pad;
+			// pos.z -=box.max.z - (kGridHalf - pad);
+			if (vel.z > 0.0f) vel.z = -vel.z;
 			changed = true;
 		}
 
@@ -132,22 +139,44 @@ void GameWorld::resolveWallCollisions(GameObject &obj)
 
 void GameWorld::resolveObjectObjectCollisions()
 {
+	// for each combination of objects check collision.
 	const size_t n = objects_.size();
 	for (size_t i = 0; i < n; ++i) {
 		for (size_t j = i + 1; j < n; ++j) {
 			GameObject &a = objects_[i];
 			GameObject &b = objects_[j];
+			// ignore if either is not in collidable state.
 			if (a.isCollected() || b.isCollected())
 				continue;
+			// get bounding boxes and velocities.
+			glm::vec3 pa = a.getPosition();
+			glm::vec3 pb = b.getPosition();
 			AABB ba = a.getWorldAABB();
 			AABB bb = b.getWorldAABB();
-			if (!ba.overlaps(bb))
-				continue;
-			// Reverse both to avoid deadlock stacking; simple bounce.
 			glm::vec3 va = a.getVelocity();
 			glm::vec3 vb = b.getVelocity();
-			a.setVelocity(-va);
-			b.setVelocity(-vb);
+			// Check Bounding Boxes and adjust velocities.
+			if (!ba.overlaps(bb))
+				continue; 
+			// check where it's overlapping.
+
+			// check opposing directions
+			for (int i = 0; i < 3; i++){
+				if (va[i]*vb[i] >= 0.0f)
+					continue; // not opposing, skip.
+				// check towards each other.
+				if ((va[i] > 0.0f &&
+					pa[i] < pb[i]) ||
+					(vb[i] > 0.0f &&
+					pb[i] < pa[i])
+				){
+					// moving towards each other, flip both.
+					va[i] *= -1.0f;
+					vb[i] *= -1.0f;
+				}
+			}
+			a.setVelocity(va);
+			b.setVelocity(vb);
 		}
 	}
 }
@@ -183,16 +212,13 @@ void GameWorld::step(float dt, const glm::vec3 &playerPos, float playerHalfExten
 		o.update(dt, kGroundY);
 	}
 
+	// resolve wall collisions. Adjusts positions be out of walls.
 	for (auto &o : objects_) {
 		resolveWallCollisions(o);
 	}
 
+	// resolve object-object collisions. Ajusts velocities to be opposite.
 	resolveObjectObjectCollisions();
-
-	// Second wall pass after object-object may push AABB out
-	for (auto &o : objects_) {
-		resolveWallCollisions(o);
-	}
 
 	checkPlayerCollection(playerPos, playerHalfExtent);
 }

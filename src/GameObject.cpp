@@ -13,7 +13,12 @@
 
 bool AABB::overlaps(const AABB &o) const
 {
-	return min.x <= o.max.x && max.x >= o.min.x && min.y <= o.max.y && max.y >= o.min.y && min.z <= o.max.z && max.z >= o.min.z;
+	return 	min.x <= o.max.x && 
+			max.x >= o.min.x && 
+			min.y <= o.max.y && 
+			max.y >= o.min.y && 
+			min.z <= o.max.z && 
+			max.z >= o.min.z;
 }
 
 GameObject::GameObject()
