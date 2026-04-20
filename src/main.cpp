@@ -26,6 +26,7 @@
 #include "Shape.h"
 #include "Texture.h"
 #include "WindowManager.h"
+#include "world/Chunk.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader/tiny_obj_loader.h>
@@ -183,7 +184,26 @@ public:
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_PROGRAM_POINT_SIZE);
 
+		glEnable(GL_CULL_FACE);
+
 		sunWorld_ = vec3(6.0f, 18.0f, 10.0f);
+
+		// ChunkProg definition
+		chunkProg_ = make_shared<Program>();
+		chunkProg_->setVerbose(true);
+		chunkProg_->setShaderNames(
+			resourceDirectory+"/chunk/chunk_vert.glsl",
+			resourceDirectory+"/chunk/chunk_frag.glsl"
+		);
+		if (!chunkProg_->init())
+			cerr << "texProg failed to link" << endl;
+		chunkProg_->addUniform("P");
+		chunkProg_->addUniform("V");
+		chunkProg_->addUniform("M");
+		chunkProg_->addAttribute("vertPos");
+		chunkProg_->addAttribute("vertColor");
+		chunk->bindMesh();
+		chunk->updateMesh();
 
 		// Lit texture pass (world-space Blinn-Phong, 471-style texture sampling)
 		texProg_ = make_shared<Program>();
@@ -694,6 +714,15 @@ public:
 		vec3 eye = thirdPersonCam_.getEye(pivot);
 		mat4 Vsky = glm::mat4(glm::mat3(V));
 
+		// --- Chunk Drawing ---
+		chunkProg_->bind();
+		mat4 M = mat4(1.0);
+		glUniformMatrix4fv(chunkProg_->getUniform("P"), 1, GL_FALSE, value_ptr(P));
+		glUniformMatrix4fv(chunkProg_->getUniform("V"), 1, GL_FALSE, value_ptr(V));
+		glUniformMatrix4fv(chunkProg_->getUniform("M"), 1, GL_FALSE, value_ptr(M));
+		chunk->drawMesh(*chunkProg_);
+		chunkProg_->unbind();
+
 		skybox_.draw(P, Vsky);
 
 		vec3 lightColor(1.0f, 0.98f, 0.92f);
@@ -1035,6 +1064,8 @@ private:
 	shared_ptr<Program> godrayProg_, bloomBrightProg_, blurProg_, compositeProg_;
 	shared_ptr<Program> particleProg_;
 	shared_ptr<Program> sunMaskProg_;
+	shared_ptr<Program> chunkProg_;
+	shared_ptr<Chunk> chunk = make_shared<Chunk>();
 
 	shared_ptr<Texture> collectibleTex_;
 	GLuint groundTexGl_ = 0;
