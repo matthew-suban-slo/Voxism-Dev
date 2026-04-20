@@ -41,7 +41,7 @@ bool Skybox::init(const std::string &resourceDir, const std::string &equirectFil
 
 	prog_ = std::make_shared<Program>();
 	prog_->setVerbose(true);
-	prog_->setShaderNames(resourceDir + "/skybox_vert.glsl", resourceDir + "/skybox_frag.glsl");
+	prog_->setShaderNames(resourceDir + "/shaders/skybox/skybox_vert.glsl", resourceDir + "/shaders/skybox/skybox_frag.glsl");
 	if (!prog_->init())
 		return false;
 	prog_->addUniform("P");

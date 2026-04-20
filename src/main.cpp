@@ -157,6 +157,23 @@ static GLuint makeGroundCheckerTexture(int size)
 	return tid;
 }
 
+static std::string shaderPath(const std::string& resourceDir,
+                               const std::string& category,
+                               const std::string& filename) {
+    return resourceDir + "/shaders/" + category + "/" + filename;
+}
+
+struct PostProcessToggle {
+    bool godRaysEnabled  = true;
+    bool bloomEnabled    = true;
+    bool ssaoEnabled     = true;
+    float godrayStrength = 1.35f;
+    float bloomStrength  = 1.6f;
+    float ssaoRadius     = 0.5f;
+    float ssaoBias       = 0.025f;
+    float ssaoIntensity  = 1.0f;
+};
+
 class Application : public EventCallbacks {
 public:
 	WindowManager *windowManager = nullptr;
@@ -192,8 +209,8 @@ public:
 		chunkProg_ = make_shared<Program>();
 		chunkProg_->setVerbose(true);
 		chunkProg_->setShaderNames(
-			resourceDirectory+"/chunk/chunk_vert.glsl",
-			resourceDirectory+"/chunk/chunk_frag.glsl"
+			shaderPath(resourceDirectory, "chunk", "chunk_vert.glsl"),
+			shaderPath(resourceDirectory, "chunk", "chunk_frag.glsl")
 		);
 		if (!chunkProg_->init())
 			cerr << "texProg failed to link" << endl;
@@ -208,8 +225,8 @@ public:
 		// Lit texture pass (world-space Blinn-Phong, 471-style texture sampling)
 		texProg_ = make_shared<Program>();
 		texProg_->setVerbose(true);
-		texProg_->setShaderNames(resourceDirectory + "/tex_lit_world_vert.glsl",
-		                         resourceDirectory + "/tex_lit_world_frag.glsl");
+		texProg_->setShaderNames(shaderPath(resourceDirectory, "scene", "tex_lit_world_vert.glsl"),
+		                         shaderPath(resourceDirectory, "scene", "tex_lit_world_frag.glsl"));
 		if (!texProg_->init())
 			cerr << "texProg failed to link" << endl;
 		texProg_->addUniform("P");
@@ -243,8 +260,8 @@ public:
 
 		charProg_ = make_shared<Program>();
 		charProg_->setVerbose(true);
-		charProg_->setShaderNames(resourceDirectory + "/tex_char_anim_vert.glsl",
-		                          resourceDirectory + "/tex_lit_world_frag.glsl");
+		charProg_->setShaderNames(shaderPath(resourceDirectory, "scene", "tex_char_anim_vert.glsl"),
+		                          shaderPath(resourceDirectory, "scene", "tex_lit_world_frag.glsl"));
 		if (!charProg_->init())
 			cerr << "charProg failed" << endl;
 		charProg_->addUniform("P");
@@ -290,8 +307,8 @@ public:
 
 		particleProg_ = make_shared<Program>();
 		particleProg_->setVerbose(true);
-		particleProg_->setShaderNames(resourceDirectory + "/particle_vert.glsl",
-		                              resourceDirectory + "/particle_frag.glsl");
+		particleProg_->setShaderNames(shaderPath(resourceDirectory, "particle", "particle_vert.glsl"),
+		                              shaderPath(resourceDirectory, "particle", "particle_frag.glsl"));
 		if (!particleProg_->init())
 			cerr << "particleProg failed" << endl;
 		particleProg_->addUniform("P");
@@ -327,8 +344,8 @@ public:
 	{
 		godrayProg_ = make_shared<Program>();
 		godrayProg_->setVerbose(true);
-		godrayProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
-		                           resourceDirectory + "/godray_frag.glsl");
+		godrayProg_->setShaderNames(shaderPath(resourceDirectory, "postprocess", "screen_vert.glsl"),
+		                           shaderPath(resourceDirectory, "postprocess", "godray_frag.glsl"));
 		if (!godrayProg_->init())
 			cerr << "godrayProg failed" << endl;
 		godrayProg_->addUniform("sceneTex");
@@ -337,24 +354,24 @@ public:
 
 		sunMaskProg_ = make_shared<Program>();
 		sunMaskProg_->setVerbose(true);
-		sunMaskProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
-		                             resourceDirectory + "/sunmask_frag.glsl");
+		sunMaskProg_->setShaderNames(shaderPath(resourceDirectory, "postprocess", "screen_vert.glsl"),
+		                             shaderPath(resourceDirectory, "postprocess", "sunmask_frag.glsl"));
 		if (!sunMaskProg_->init())
 			cerr << "sunMaskProg failed" << endl;
 		sunMaskProg_->addUniform("sunPos");
 
 		bloomBrightProg_ = make_shared<Program>();
 		bloomBrightProg_->setVerbose(true);
-		bloomBrightProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
-		                                 resourceDirectory + "/bloom_bright_frag.glsl");
+		bloomBrightProg_->setShaderNames(shaderPath(resourceDirectory, "postprocess", "screen_vert.glsl"),
+		                                 shaderPath(resourceDirectory, "postprocess", "bloom_bright_frag.glsl"));
 		if (!bloomBrightProg_->init())
 			cerr << "bloomBrightProg failed" << endl;
 		bloomBrightProg_->addUniform("sceneTex");
 
 		blurProg_ = make_shared<Program>();
 		blurProg_->setVerbose(true);
-		blurProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
-		                          resourceDirectory + "/blur_frag.glsl");
+		blurProg_->setShaderNames(shaderPath(resourceDirectory, "postprocess", "screen_vert.glsl"),
+		                          shaderPath(resourceDirectory, "postprocess", "blur_frag.glsl"));
 		if (!blurProg_->init())
 			cerr << "blurProg failed" << endl;
 		blurProg_->addUniform("image");
@@ -363,8 +380,8 @@ public:
 
 		compositeProg_ = make_shared<Program>();
 		compositeProg_->setVerbose(true);
-		compositeProg_->setShaderNames(resourceDirectory + "/screen_vert.glsl",
-		                               resourceDirectory + "/composite_frag.glsl");
+		compositeProg_->setShaderNames(shaderPath(resourceDirectory, "postprocess", "screen_vert.glsl"),
+		                               shaderPath(resourceDirectory, "postprocess", "composite_frag.glsl"));
 		if (!compositeProg_->init())
 			cerr << "compositeProg failed" << endl;
 		compositeProg_->addUniform("sceneTex");
@@ -372,6 +389,42 @@ public:
 		compositeProg_->addUniform("bloomTex");
 		compositeProg_->addUniform("godrayStrength");
 		compositeProg_->addUniform("bloomStrength");
+		compositeProg_->addUniform("ssaoTex");
+		compositeProg_->addUniform("ssaoIntensity");
+		compositeProg_->addUniform("ssaoEnabled");
+
+		// SSAO pass shader
+		ssaoProg_ = make_shared<Program>();
+		ssaoProg_->setVerbose(true);
+		ssaoProg_->setShaderNames(shaderPath(resourceDirectory, "postprocess", "screen_vert.glsl"),
+		                          shaderPath(resourceDirectory, "postprocess", "ssao_frag.glsl"));
+		if (!ssaoProg_->init()) {
+			cerr << "ssaoProg failed — SSAO disabled" << endl;
+			postToggles_.ssaoEnabled = false;
+		} else {
+			ssaoProg_->addUniform("depthTex");
+			ssaoProg_->addUniform("noiseTex");
+			for (int i = 0; i < 64; ++i)
+				ssaoProg_->addUniform(("samples[" + to_string(i) + "]").c_str());
+			ssaoProg_->addUniform("projection");
+			ssaoProg_->addUniform("invProjection");
+			ssaoProg_->addUniform("noiseScale");
+			ssaoProg_->addUniform("radius");
+			ssaoProg_->addUniform("bias");
+		}
+
+		// SSAO blur shader
+		ssaoBlurProg_ = make_shared<Program>();
+		ssaoBlurProg_->setVerbose(true);
+		ssaoBlurProg_->setShaderNames(shaderPath(resourceDirectory, "postprocess", "screen_vert.glsl"),
+		                               shaderPath(resourceDirectory, "postprocess", "ssao_blur_frag.glsl"));
+		if (!ssaoBlurProg_->init()) {
+			cerr << "ssaoBlurProg failed — SSAO disabled" << endl;
+			postToggles_.ssaoEnabled = false;
+		} else {
+			ssaoBlurProg_->addUniform("ssaoInput");
+			ssaoBlurProg_->addUniform("texelSize");
+		}
 	}
 
 	void teardownPostProcess()
@@ -391,6 +444,10 @@ public:
 		if (sceneColorTex_) {
 			glDeleteTextures(1, &sceneColorTex_);
 			sceneColorTex_ = 0;
+		}
+		if (sceneDepthTex_) {
+			glDeleteTextures(1, &sceneDepthTex_);
+			sceneDepthTex_ = 0;
 		}
 		if (sceneDepthRBO_) {
 			glDeleteRenderbuffers(1, &sceneDepthRBO_);
@@ -422,6 +479,11 @@ public:
 				pingpongTex_[i] = 0;
 			}
 		}
+		if (ssaoFBO_) { glDeleteFramebuffers(1, &ssaoFBO_); ssaoFBO_ = 0; }
+		if (ssaoTex_) { glDeleteTextures(1, &ssaoTex_); ssaoTex_ = 0; }
+		if (ssaoBlurFBO_) { glDeleteFramebuffers(1, &ssaoBlurFBO_); ssaoBlurFBO_ = 0; }
+		if (ssaoBlurTex_) { glDeleteTextures(1, &ssaoBlurTex_); ssaoBlurTex_ = 0; }
+		if (noiseTex_) { glDeleteTextures(1, &noiseTex_); noiseTex_ = 0; }
 		postW_ = postH_ = 0;
 	}
 
@@ -465,10 +527,28 @@ public:
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneColorTex_, 0);
-		glGenRenderbuffers(1, &sceneDepthRBO_);
-		glBindRenderbuffer(GL_RENDERBUFFER, sceneDepthRBO_);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, sceneDepthRBO_);
+
+		// Depth texture (required for SSAO depth reads)
+		glGenTextures(1, &sceneDepthTex_);
+		glBindTexture(GL_TEXTURE_2D, sceneDepthTex_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, sceneDepthTex_, 0);
+
+		// Check FBO completeness; fall back to renderbuffer if depth texture unsupported
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+			cerr << "[SSAO] Scene FBO incomplete with depth texture — falling back to renderbuffer, SSAO disabled" << endl;
+			glDeleteTextures(1, &sceneDepthTex_);
+			sceneDepthTex_ = 0;
+			glGenRenderbuffers(1, &sceneDepthRBO_);
+			glBindRenderbuffer(GL_RENDERBUFFER, sceneDepthRBO_);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, sceneDepthRBO_);
+			postToggles_.ssaoEnabled = false;
+		}
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		glGenFramebuffers(1, &godrayFBO_);
@@ -510,6 +590,99 @@ public:
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongTex_[i], 0);
 		}
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// SSAO raw output FBO
+		glGenFramebuffers(1, &ssaoFBO_);
+		glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO_);
+		glGenTextures(1, &ssaoTex_);
+		glBindTexture(GL_TEXTURE_2D, ssaoTex_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, w, h, 0, GL_RED, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoTex_, 0);
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+			cerr << "[SSAO] SSAO FBO incomplete — SSAO disabled" << endl;
+			postToggles_.ssaoEnabled = false;
+		}
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// SSAO blur FBO
+		glGenFramebuffers(1, &ssaoBlurFBO_);
+		glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO_);
+		glGenTextures(1, &ssaoBlurTex_);
+		glBindTexture(GL_TEXTURE_2D, ssaoBlurTex_);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, w, h, 0, GL_RED, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoBlurTex_, 0);
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+			cerr << "[SSAO] SSAO blur FBO incomplete — SSAO disabled" << endl;
+			postToggles_.ssaoEnabled = false;
+		}
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// Generate SSAO kernel and noise texture (once)
+		if (ssaoKernel_.empty())
+			ssaoKernel_ = generateSSAOKernel(64);
+		if (noiseTex_ == 0)
+			noiseTex_ = generateNoiseTexture();
+	}
+
+	std::vector<glm::vec3> generateSSAOKernel(int sampleCount = 64)
+	{
+		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+		std::default_random_engine gen;
+		std::vector<glm::vec3> kernel;
+		kernel.reserve(sampleCount);
+
+		for (int i = 0; i < sampleCount; ++i) {
+			glm::vec3 sample(
+				dist(gen) * 2.0f - 1.0f,   // x: [-1, 1]
+				dist(gen) * 2.0f - 1.0f,   // y: [-1, 1]
+				dist(gen)                    // z: [0, 1] — hemisphere
+			);
+			sample = glm::normalize(sample);
+			sample *= dist(gen);  // random length [0, 1]
+
+			// Accelerating interpolation: bias samples toward origin
+			float scale = (float)i / (float)sampleCount;
+			scale = 0.1f + scale * scale * 0.9f;  // lerp(0.1, 1.0, scale^2)
+			sample *= scale;
+
+			kernel.push_back(sample);
+		}
+		return kernel;
+	}
+
+	GLuint generateNoiseTexture()
+	{
+		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+		std::default_random_engine gen;
+		std::vector<glm::vec3> noiseData;
+		noiseData.reserve(16);
+		for (int i = 0; i < 16; ++i) {
+			glm::vec3 noise(
+				dist(gen) * 2.0f - 1.0f,
+				dist(gen) * 2.0f - 1.0f,
+				0.0f
+			);
+			noise = glm::normalize(noise);
+			noiseData.push_back(noise);
+		}
+		GLuint tex = 0;
+		glGenTextures(1, &tex);
+		glBindTexture(GL_TEXTURE_2D, tex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, 4, 4, 0, GL_RGB, GL_FLOAT, noiseData.data());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		return tex;
 	}
 
 	void initGroundMesh()
@@ -555,6 +728,62 @@ public:
 		glEnable(GL_DEPTH_TEST);
 	}
 
+	void renderSSAOPass(const glm::mat4& P, const glm::mat4& V)
+	{
+		(void)V;  // V not needed for SSAO (depth is already in view space)
+
+		// --- SSAO raw pass ---
+		glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO_);
+		glViewport(0, 0, postW_, postH_);
+		glClear(GL_COLOR_BUFFER_BIT);
+		ssaoProg_->bind();
+
+		// Depth texture
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, sceneDepthTex_);
+		glUniform1i(ssaoProg_->getUniform("depthTex"), 0);
+
+		// Noise texture
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, noiseTex_);
+		glUniform1i(ssaoProg_->getUniform("noiseTex"), 1);
+
+		// Kernel samples
+		for (int i = 0; i < 64 && i < (int)ssaoKernel_.size(); ++i) {
+			string name = "samples[" + to_string(i) + "]";
+			glUniform3fv(ssaoProg_->getUniform(name.c_str()), 1, glm::value_ptr(ssaoKernel_[i]));
+		}
+
+		// Matrices
+		glUniformMatrix4fv(ssaoProg_->getUniform("projection"), 1, GL_FALSE, glm::value_ptr(P));
+		glm::mat4 invP = glm::inverse(P);
+		glUniformMatrix4fv(ssaoProg_->getUniform("invProjection"), 1, GL_FALSE, glm::value_ptr(invP));
+
+		// Scale and tuning
+		glUniform2f(ssaoProg_->getUniform("noiseScale"), (float)postW_ / 4.0f, (float)postH_ / 4.0f);
+		glUniform1f(ssaoProg_->getUniform("radius"), postToggles_.ssaoRadius);
+		glUniform1f(ssaoProg_->getUniform("bias"), postToggles_.ssaoBias);
+
+		drawFullscreenQuad();
+		ssaoProg_->unbind();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// --- SSAO blur pass ---
+		glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO_);
+		glViewport(0, 0, postW_, postH_);
+		glClear(GL_COLOR_BUFFER_BIT);
+		ssaoBlurProg_->bind();
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, ssaoTex_);
+		glUniform1i(ssaoBlurProg_->getUniform("ssaoInput"), 0);
+		glUniform2f(ssaoBlurProg_->getUniform("texelSize"), 1.0f / (float)postW_, 1.0f / (float)postH_);
+
+		drawFullscreenQuad();
+		ssaoBlurProg_->unbind();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+
 	void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods) override
 	{
 		(void)scancode;
@@ -595,6 +824,19 @@ public:
 		if (key == GLFW_KEY_T && action == GLFW_PRESS) {
 			idleYawHoldEnabled_ = !idleYawHoldEnabled_;
 			cout << "[Camera yaw on idle] " << (idleYawHoldEnabled_ ? "hold after stillness (T)" : "always face camera (T)") << endl;
+		}
+
+		if (key == GLFW_KEY_G && action == GLFW_PRESS) {
+			postToggles_.godRaysEnabled = !postToggles_.godRaysEnabled;
+			cout << "[PostFX] God rays: " << (postToggles_.godRaysEnabled ? "ON" : "OFF") << endl;
+		}
+		if (key == GLFW_KEY_B && action == GLFW_PRESS) {
+			postToggles_.bloomEnabled = !postToggles_.bloomEnabled;
+			cout << "[PostFX] Bloom: " << (postToggles_.bloomEnabled ? "ON" : "OFF") << endl;
+		}
+		if (key == GLFW_KEY_O && action == GLFW_PRESS) {
+			postToggles_.ssaoEnabled = !postToggles_.ssaoEnabled;
+			cout << "[PostFX] SSAO: " << (postToggles_.ssaoEnabled ? "ON" : "OFF") << endl;
 		}
 	}
 
@@ -848,66 +1090,77 @@ public:
 			sunScreen = vec2((sunClip.x / sunClip.w) * 0.5f + 0.5f, (sunClip.y / sunClip.w) * 0.5f + 0.5f);
 		}
 
-		// --- God rays ---
-		glBindFramebuffer(GL_FRAMEBUFFER, godraySrcFBO_);
-		glViewport(0, 0, postW_, postH_);
-		glClearColor(0.18f, 0.22f, 0.34f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-		sunMaskProg_->bind();
-		glUniform2f(sunMaskProg_->getUniform("sunPos"), sunScreen.x, sunScreen.y);
-		drawFullscreenQuad();
-		sunMaskProg_->unbind();
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		// --- SSAO pass (conditional) ---
+		if (postToggles_.ssaoEnabled) {
+			renderSSAOPass(P, V);
+		}
 
-		// --- God rays (from sun mask, not full scene) ---
-		glBindFramebuffer(GL_FRAMEBUFFER, godrayFBO_);
-		glViewport(0, 0, postW_, postH_);
-		glClear(GL_COLOR_BUFFER_BIT);
-		godrayProg_->bind();
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, godraySrcTex_);
-		glUniform1i(godrayProg_->getUniform("sceneTex"), 0);
-		glUniform2f(godrayProg_->getUniform("sunPos"), sunScreen.x, sunScreen.y);
-		glUniform1f(godrayProg_->getUniform("time"), (float)glfwGetTime());
-		drawFullscreenQuad();
-		godrayProg_->unbind();
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		// --- God rays (conditional) ---
+		if (postToggles_.godRaysEnabled) {
+			glBindFramebuffer(GL_FRAMEBUFFER, godraySrcFBO_);
+			glViewport(0, 0, postW_, postH_);
+			glClearColor(0.18f, 0.22f, 0.34f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+			sunMaskProg_->bind();
+			glUniform2f(sunMaskProg_->getUniform("sunPos"), sunScreen.x, sunScreen.y);
+			drawFullscreenQuad();
+			sunMaskProg_->unbind();
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		// --- Bloom extract ---
+			// --- God rays (from sun mask, not full scene) ---
+			glBindFramebuffer(GL_FRAMEBUFFER, godrayFBO_);
+			glViewport(0, 0, postW_, postH_);
+			glClear(GL_COLOR_BUFFER_BIT);
+			godrayProg_->bind();
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, godraySrcTex_);
+			glUniform1i(godrayProg_->getUniform("sceneTex"), 0);
+			glUniform2f(godrayProg_->getUniform("sunPos"), sunScreen.x, sunScreen.y);
+			glUniform1f(godrayProg_->getUniform("time"), (float)glfwGetTime());
+			drawFullscreenQuad();
+			godrayProg_->unbind();
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
+
+		// --- Bloom extract + blur ping-pong (conditional) ---
 		int hw = std::max(1, postW_ / 2);
 		int hh = std::max(1, postH_ / 2);
-		glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO_[0]);
-		glViewport(0, 0, hw, hh);
-		glClear(GL_COLOR_BUFFER_BIT);
-		bloomBrightProg_->bind();
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, sceneColorTex_);
-		glUniform1i(bloomBrightProg_->getUniform("sceneTex"), 0);
-		drawFullscreenQuad();
-		bloomBrightProg_->unbind();
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		// --- Blur ping-pong (source: bloom in pingpongTex_[0]) ---
-		blurProg_->bind();
-		glUniform2f(blurProg_->getUniform("texelSize"), 1.0f / (float)hw, 1.0f / (float)hh);
 		int lastBuf = 0;
-		bool horizontal = true;
-		for (int i = 0; i < 10; i++) {
-			int target = 1 - lastBuf;
-			glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO_[target]);
+		if (postToggles_.bloomEnabled) {
+			glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO_[0]);
 			glViewport(0, 0, hw, hh);
-			glUniform1i(blurProg_->getUniform("horizontal"), horizontal ? 1 : 0);
+			glClear(GL_COLOR_BUFFER_BIT);
+			bloomBrightProg_->bind();
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, pingpongTex_[lastBuf]);
-			glUniform1i(blurProg_->getUniform("image"), 0);
+			glBindTexture(GL_TEXTURE_2D, sceneColorTex_);
+			glUniform1i(bloomBrightProg_->getUniform("sceneTex"), 0);
 			drawFullscreenQuad();
-			lastBuf = target;
-			horizontal = !horizontal;
+			bloomBrightProg_->unbind();
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// --- Blur ping-pong (source: bloom in pingpongTex_[0]) ---
+			blurProg_->bind();
+			glUniform2f(blurProg_->getUniform("texelSize"), 1.0f / (float)hw, 1.0f / (float)hh);
+			bool horizontal = true;
+			for (int i = 0; i < 10; i++) {
+				int target = 1 - lastBuf;
+				glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO_[target]);
+				glViewport(0, 0, hw, hh);
+				glUniform1i(blurProg_->getUniform("horizontal"), horizontal ? 1 : 0);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, pingpongTex_[lastBuf]);
+				glUniform1i(blurProg_->getUniform("image"), 0);
+				drawFullscreenQuad();
+				lastBuf = target;
+				horizontal = !horizontal;
+			}
+			blurProg_->unbind();
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
-		blurProg_->unbind();
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		// --- Composite to default framebuffer ---
+		float godrayStrength = postToggles_.godRaysEnabled ? postToggles_.godrayStrength : 0.0f;
+		float bloomStrength  = postToggles_.bloomEnabled   ? postToggles_.bloomStrength  : 0.0f;
 		glViewport(0, 0, width, height);
 		glClearColor(0.06f, 0.07f, 0.09f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -921,8 +1174,13 @@ public:
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, pingpongTex_[lastBuf]);
 		glUniform1i(compositeProg_->getUniform("bloomTex"), 2);
-		glUniform1f(compositeProg_->getUniform("godrayStrength"), 1.35f);
-		glUniform1f(compositeProg_->getUniform("bloomStrength"), 1.6f);
+		glUniform1f(compositeProg_->getUniform("godrayStrength"), godrayStrength);
+		glUniform1f(compositeProg_->getUniform("bloomStrength"), bloomStrength);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, ssaoBlurTex_);
+		glUniform1i(compositeProg_->getUniform("ssaoTex"), 3);
+		glUniform1f(compositeProg_->getUniform("ssaoIntensity"), postToggles_.ssaoIntensity);
+		glUniform1i(compositeProg_->getUniform("ssaoEnabled"), postToggles_.ssaoEnabled ? 1 : 0);
 		drawFullscreenQuad();
 		compositeProg_->unbind();
 	}
@@ -983,7 +1241,7 @@ private:
 			for (auto &p : burst.particles) {
 				p.life -= dt;
 				if (p.life <= 0.0f)
-					continue;particleBursts_;
+					continue;
 				p.vel += gravity * dt;
 				p.pos += p.vel * dt;
 				if (p.pos.y < GameWorld::kGroundY + 0.02f) {
@@ -1065,6 +1323,8 @@ private:
 	shared_ptr<Program> particleProg_;
 	shared_ptr<Program> sunMaskProg_;
 	shared_ptr<Program> chunkProg_;
+	shared_ptr<Program> ssaoProg_;
+	shared_ptr<Program> ssaoBlurProg_;
 	shared_ptr<Chunk> chunk = make_shared<Chunk>();
 
 	shared_ptr<Texture> collectibleTex_;
@@ -1079,11 +1339,17 @@ private:
 
 	GLuint quadVao_ = 0, quadVbo_ = 0;
 	GLuint particleVao_ = 0, particleVbo_ = 0;
-	GLuint sceneFBO_ = 0, sceneColorTex_ = 0, sceneDepthRBO_ = 0;
+	GLuint sceneFBO_ = 0, sceneColorTex_ = 0;
+	GLuint sceneDepthTex_ = 0;
+	GLuint sceneDepthRBO_ = 0;
 	GLuint godrayFBO_ = 0, godrayTex_ = 0;
 	GLuint godraySrcFBO_ = 0, godraySrcTex_ = 0;
 	GLuint pingpongFBO_[2] = {0, 0};
 	GLuint pingpongTex_[2] = {0, 0};
+	GLuint ssaoFBO_ = 0, ssaoBlurFBO_ = 0;
+	GLuint ssaoTex_ = 0, ssaoBlurTex_ = 0;
+	GLuint noiseTex_ = 0;
+	std::vector<glm::vec3> ssaoKernel_;
 	int postW_ = 0, postH_ = 0;
 
 	GameWorld world_;
@@ -1097,6 +1363,8 @@ private:
 	std::uniform_real_distribution<float> distSpeed_{2.5f, 7.2f};
 
 	bool keyW_ = false, keyS_ = false, keyA_ = false, keyD_ = false;
+
+	PostProcessToggle postToggles_;
 
 	/** After this many seconds with no move input and low horizontal speed, idle avatar stops turning to face the camera (orbit to see front). Toggle with T. */
 	static constexpr float kIdleYawHoldSeconds = 2.0f;

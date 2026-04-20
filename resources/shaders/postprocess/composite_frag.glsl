@@ -12,6 +12,10 @@ uniform sampler2D bloomTex;
 uniform float godrayStrength;
 uniform float bloomStrength;
 
+uniform sampler2D ssaoTex;
+uniform float     ssaoIntensity;
+uniform bool      ssaoEnabled;
+
 // Reinhard per-channel tone map
 vec3 toneMap(vec3 hdr)
 {
@@ -21,6 +25,13 @@ vec3 toneMap(vec3 hdr)
 void main()
 {
     vec3 scene = texture(sceneTex,  TexCoords).rgb;
+
+    // Apply SSAO
+    if (ssaoEnabled) {
+        float ao = texture(ssaoTex, TexCoords).r;
+        scene *= mix(1.0, ao, ssaoIntensity);
+    }
+
     vec3 rays  = texture(godrayTex, TexCoords).rgb;
     vec3 bloom = texture(bloomTex,  TexCoords).rgb;
 
