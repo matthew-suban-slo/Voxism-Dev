@@ -19,10 +19,17 @@ class Chunk
         void drawMesh(const Program& prog);
     
     private:
+        // For each voxel in occupancyInts will fill an outlining grid.
+        // Works with verious voxel and chunk sizes.
+        void fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z);
+        // adds a complete cube primitive to the buffers for a given voxel position.
+        void addCubePrimitive(glm::vec3* voxPos, int vertIndex);
+
         // Information to be extracted later.
         float voxSizeMeters; // size of a voxel in meters.
         int chunkSizeInts; // number of ints needed to store the length of a chunk.
-
+        int voxPerMeter;
+    
         // int is 32 bits, so we can store 32 voxels in one int.
         std::vector<uint32_t>  occupancyInts;
         int occupancyXsize, occupancyYsize, occupancyZsize; 

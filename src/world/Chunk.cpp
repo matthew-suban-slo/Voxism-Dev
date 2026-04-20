@@ -2,7 +2,7 @@
 
 Chunk::Chunk(){
     // Input parameters for chunks
-    int voxPerMeter = 16; // must be 2^n.
+    voxPerMeter = 16; // must be 2^n.
     int chunkSizeMeters = 16; 
 
     // Calculations 
@@ -33,21 +33,10 @@ Chunk::Chunk(){
         {
             for (int x=0; x<occupancyXsize; x++)
             {
-                // for each bit in the int.
-                int occupancyInt = occupancyInts[z*occupancyXsize*occupancyYsize + y*occupancyXsize + x];
-                for (int bit=0; bit<32; bit++)
-                {
-                    // if (bit%16 == 0) occupancyInt = occupancyInt | (1u << bit);
-                }
-                if (z%16 == 0){
-                    occupancyInt |= 0b00000000000000010000000000000001;
-                }
-                if (y%16 == 0){
-                    occupancyInt |= 0b00000000000000010000000000000001;
-                }
-                if (y%16 == 0 && z%16 == 0){
-                    occupancyInt |= 0b11111111111111111111111111111111;
-                }
+                // for (int bit=0; bit<32; bit++){}
+
+                uint32_t occupancyInt = occupancyInts[z*occupancyXsize*occupancyYsize + y*occupancyXsize + x];
+                fillMeterGrid(&occupancyInt, x, y, z);
                 occupancyInts[z*occupancyXsize*occupancyYsize + y*occupancyXsize + x] = occupancyInt;
             }
         }
@@ -76,98 +65,16 @@ void Chunk::updateMesh()
                     // check if the bit is set.
                     if (occupancyInt & (1u << bit))
                     {
-                        // position is 0,0,0 for the voxel.
+                        // position is 0,0,0 for the first voxel.
                         glm::vec3 voxPos = glm::vec3(
                             x*32*voxSizeMeters + bit*voxSizeMeters, // x position of the voxel.
                             y*voxSizeMeters, // y position of the voxel.
                             z*voxSizeMeters // z position of the voxel.
                         );
+
                         int vertIndex = vBuff.size() / 3; // index of the first vertex for this voxel.
 
-                        // Add Vertexes.
-                        // ID 0: 0,0,0 corner
-                        // ID 1: 1,0,0 +x
-                        // ID 2: 0,1,0 +y
-                        // ID 3: 1,1,0 +x+y
-                        // ID 4: 0,0,1 +z
-                        // ID 5: 1,0,1 +x+z
-                        // ID 6: 0,1,1 +y+z
-                        // ID 7: 1,1,1 +z+y+z
-                        for (int dz=0; dz<=1; dz++)
-                        {
-                            for (int dy=0; dy<=1; dy++)
-                            {
-                                for (int dx=0; dx<=1; dx++)
-                                {
-                                    vBuff.push_back(voxPos.x + dx*voxSizeMeters);
-                                    vBuff.push_back(voxPos.y + dy*voxSizeMeters);
-                                    vBuff.push_back(voxPos.z + dz*voxSizeMeters);
-
-                                    cBuff.push_back((voxPos.x)/16.0f); // R
-                                    cBuff.push_back((voxPos.y)/16.0f); // G
-                                    cBuff.push_back((voxPos.z)/16.0f); // B
-                                    // cBuff.push_back(0.5f); // R
-                                    // cBuff.push_back(0.5f); // G
-                                    // cBuff.push_back(0.5f); // B
-                                }
-                            }
-                        }
-                        
-                        // Add Elements.
-                        // We will add 12 triangles for the cube.
-                        // +x Face:
-                        eBuff.push_back(vertIndex + 3); // +x+y
-                        eBuff.push_back(vertIndex + 5); // +x+z
-                        eBuff.push_back(vertIndex + 1); // +x
-                        // 
-                        eBuff.push_back(vertIndex + 3); // +x+y 
-                        eBuff.push_back(vertIndex + 7); // +x+y+z
-                        eBuff.push_back(vertIndex + 5); // +x+z
-
-                        //-x Face
-                        eBuff.push_back(vertIndex + 6); // +y+z
-                        eBuff.push_back(vertIndex + 0); // corner
-                        eBuff.push_back(vertIndex + 4); // +Z
-                        // 
-                        eBuff.push_back(vertIndex + 6); // +y+z
-                        eBuff.push_back(vertIndex + 2); // +y
-                        eBuff.push_back(vertIndex + 0); // corner
-
-                        // +y Face:
-                        eBuff.push_back(vertIndex + 6); // +y+z
-                        eBuff.push_back(vertIndex + 3); // +x+y
-                        eBuff.push_back(vertIndex + 2); // +y
-                        // 
-                        eBuff.push_back(vertIndex + 6); // +y+z
-                        eBuff.push_back(vertIndex + 7); // +x+y+z
-                        eBuff.push_back(vertIndex + 3); // +x+y
-
-                        //-y Face
-                        eBuff.push_back(vertIndex + 5); // +x+z
-                        eBuff.push_back(vertIndex + 0); // corner
-                        eBuff.push_back(vertIndex + 1); // +x
-                        //
-                        eBuff.push_back(vertIndex + 5); // +x+z
-                        eBuff.push_back(vertIndex + 4); // +z
-                        eBuff.push_back(vertIndex + 0); // corner
-
-                        // +z Face
-                        eBuff.push_back(vertIndex + 7); // +x+y+z
-                        eBuff.push_back(vertIndex + 4); // +z
-                        eBuff.push_back(vertIndex + 5); // +x+z
-                        // 
-                        eBuff.push_back(vertIndex + 7); // +x+y+z
-                        eBuff.push_back(vertIndex + 6); // +y+z
-                        eBuff.push_back(vertIndex + 4); // +z
-
-                        // -z Face
-                        eBuff.push_back(vertIndex + 2); // +y 
-                        eBuff.push_back(vertIndex + 1); // +x
-                        eBuff.push_back(vertIndex + 0); // corner
-                        // 
-                        eBuff.push_back(vertIndex + 2); // +y
-                        eBuff.push_back(vertIndex + 3); // +x+y
-                        eBuff.push_back(vertIndex + 1); // +x
+                        addCubePrimitive(&voxPos, vertIndex);
                     }
                 }
             }
@@ -201,8 +108,10 @@ void Chunk::bindMesh()
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eBuffID);
 }
 
+// Bind buffers and draw.
 void Chunk::drawMesh(const Program& prog)
 {
+    // Quick Sanity Checks
     assert(vBuff.size() % 3 == 0);
     assert(cBuff.size() % 3 == 0);
 
@@ -227,5 +136,105 @@ void Chunk::drawMesh(const Program& prog)
     glDisableVertexAttribArray(vertAttr);
     glDisableVertexAttribArray(colorAttr);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	// glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }   
+
+
+// Private Methods
+
+void Chunk::fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z)
+{
+    int bitShifts = 32/voxPerMeter;
+    for(int shiftN = 0; shiftN < bitShifts; shiftN++){
+        if (z%voxPerMeter == 0 || y%voxPerMeter == 0){
+            *occupancyInt |= (0b1 << voxPerMeter*shiftN);
+        }
+        if (y%voxPerMeter == 0 && z%voxPerMeter == 0){
+            *occupancyInt |= 0b11111111111111111111111111111111;
+        }
+    } 
+}
+
+void Chunk::addCubePrimitive(glm::vec3* voxPos, int vertIndex)
+{
+    // ADD VERTEXES & COLOR
+    // ID 0: 0,0,0 corner
+    // ID 1: 1,0,0 +x
+    // ID 2: 0,1,0 +y
+    // ID 3: 1,1,0 +x+y
+    // ID 4: 0,0,1 +z
+    // ID 5: 1,0,1 +x+z
+    // ID 6: 0,1,1 +y+z
+    // ID 7: 1,1,1 +z+y+z
+    for (int dz=0; dz<=1; dz++)
+    {
+        for (int dy=0; dy<=1; dy++)
+        {
+            for (int dx=0; dx<=1; dx++)
+            {
+                vBuff.push_back(voxPos->x + dx*voxSizeMeters);
+                vBuff.push_back(voxPos->y + dy*voxSizeMeters);
+                vBuff.push_back(voxPos->z + dz*voxSizeMeters);
+
+                cBuff.push_back((voxPos->x)/16.0f); // R
+                cBuff.push_back((voxPos->y)/16.0f); // G
+                cBuff.push_back((voxPos->z)/16.0f); // B
+            }
+        }
+    }
+
+    // ADD TRIANGLES
+    // Add 12 triangles for the cube.
+    // +x Face:
+    eBuff.push_back(vertIndex + 3); // +x+y
+    eBuff.push_back(vertIndex + 5); // +x+z
+    eBuff.push_back(vertIndex + 1); // +x
+
+    eBuff.push_back(vertIndex + 3); // +x+y 
+    eBuff.push_back(vertIndex + 7); // +x+y+z
+    eBuff.push_back(vertIndex + 5); // +x+z
+
+    //-x Face
+    eBuff.push_back(vertIndex + 6); // +y+z
+    eBuff.push_back(vertIndex + 0); // corner
+    eBuff.push_back(vertIndex + 4); // +Z
+    
+    eBuff.push_back(vertIndex + 6); // +y+z
+    eBuff.push_back(vertIndex + 2); // +y
+    eBuff.push_back(vertIndex + 0); // corner
+
+    // +y Face:
+    eBuff.push_back(vertIndex + 6); // +y+z
+    eBuff.push_back(vertIndex + 3); // +x+y
+    eBuff.push_back(vertIndex + 2); // +y
+    
+    eBuff.push_back(vertIndex + 6); // +y+z
+    eBuff.push_back(vertIndex + 7); // +x+y+z
+    eBuff.push_back(vertIndex + 3); // +x+y
+
+    //-y Face
+    eBuff.push_back(vertIndex + 5); // +x+z
+    eBuff.push_back(vertIndex + 0); // corner
+    eBuff.push_back(vertIndex + 1); // +x
+    
+    eBuff.push_back(vertIndex + 5); // +x+z
+    eBuff.push_back(vertIndex + 4); // +z
+    eBuff.push_back(vertIndex + 0); // corner
+
+    // +z Face
+    eBuff.push_back(vertIndex + 7); // +x+y+z
+    eBuff.push_back(vertIndex + 4); // +z
+    eBuff.push_back(vertIndex + 5); // +x+z
+    
+    eBuff.push_back(vertIndex + 7); // +x+y+z
+    eBuff.push_back(vertIndex + 6); // +y+z
+    eBuff.push_back(vertIndex + 4); // +z
+
+    // -z Face
+    eBuff.push_back(vertIndex + 2); // +y 
+    eBuff.push_back(vertIndex + 1); // +x
+    eBuff.push_back(vertIndex + 0); // corner
+    
+    eBuff.push_back(vertIndex + 2); // +y
+    eBuff.push_back(vertIndex + 3); // +x+y
+    eBuff.push_back(vertIndex + 1); // +x
+}
