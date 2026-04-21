@@ -26,7 +26,7 @@ void FirstPersonCamera::ProcessMouseMovement(double dx, double dy){
 void FirstPersonCamera::ProcessScroll(double dy){
 }
 
-void FirstPersonCamera::ProcessKeypress(int key, int action){
+void FirstPersonCamera::ProcessKeypress(int key, int action){ 
     bool is_pressed = (action != GLFW_RELEASE);
 
     switch (key){
