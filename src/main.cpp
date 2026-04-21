@@ -180,6 +180,7 @@ public:
 	{
 		resourceDir_ = resourceDirectory;
 		GLSL::checkVersion();
+		cout << "OpenGL Version:" << glGetString(GL_VERSION) << endl;
 		glClearColor(0.06f, 0.07f, 0.09f, 1.0f);
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_PROGRAM_POINT_SIZE);
@@ -203,7 +204,6 @@ public:
 		chunkProg_->addAttribute("vertPos");
 		chunkProg_->addAttribute("vertColor");
 		chunk->bindMesh();
-		chunk->updateMesh();
 
 		// Lit texture pass (world-space Blinn-Phong, 471-style texture sampling)
 		texProg_ = make_shared<Program>();
@@ -704,6 +704,10 @@ public:
 		}
 		animTime_ += dt;
 		moveBlendDisplay_ = std::min(1.0f, hspeed / 4.5f);
+
+		// Chunk Update
+		chunk->updateChunk(dt, false,true,true);
+		chunk->updateMesh();
 
 		syncCameraFloorLimit();
 	}
