@@ -19,7 +19,7 @@
 #include "GameWorld.h"
 #include "GltfMesh.h"
 #include "Skybox.h"
-#include "ThirdPersonCamera.h"
+#include "FirstPersonCamera.h"
 #include "GLSL.h"
 #include "MatrixStack.h"
 #include "Program.h"
@@ -328,7 +328,7 @@ public:
 
 		player_.setGroundY(GameWorld::kGroundY + 0.05f);
 		player_.setFeetPosition(vec3(0.0f, GameWorld::kGroundY + 0.05f, 6.0f));
-		thirdPersonCam_.setDistance(5.5f);
+		// thirdPersonCam_.setDistance(5.5f);
 		syncCameraFloorLimit();
 
 		initPostProcessShaders(resourceDirectory);
@@ -797,6 +797,8 @@ public:
 			}
 		}
 
+		thirdPersonCam_.ProcessKeypress(key, action);
+
 		if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
 			player_.tryJump();
 
@@ -878,7 +880,7 @@ public:
 		double dy = lastMouseY_ - ypos;
 		lastMouseX_ = xpos;
 		lastMouseY_ = ypos;
-		thirdPersonCam_.processMouseMovement(dx, dy);
+		thirdPersonCam_.ProcessMouseMovement(dx, dy);
 		syncCameraFloorLimit();
 	}
 
@@ -886,17 +888,18 @@ public:
 	{
 		(void)window;
 		(void)xoffset;
-		thirdPersonCam_.processScroll(yoffset);
+		thirdPersonCam_.ProcessScroll(yoffset);
 		syncCameraFloorLimit();
 	}
 
 	void updateFixedStep(float dt)
 	{
 		// Player Movements
-		vec3 f = thirdPersonCam_.getMoveForwardXZ();
-		vec3 r = thirdPersonCam_.getMoveRightXZ();
-		vec3 wish = f * (static_cast<float>(keyW_) - static_cast<float>(keyS_)) + r * (static_cast<float>(keyD_) - static_cast<float>(keyA_));
+		// vec3 f = thirdPersonCam_.getMoveForwardXZ();
+		// vec3 r = thirdPersonCam_.getMoveRightXZ();
+		vec3 wish = (static_cast<float>(keyW_) - static_cast<float>(keyS_)) * vec3(1,1,1) + (static_cast<float>(keyD_) - static_cast<float>(keyA_)) * vec3(1,1,1);
 		player_.physicsStep(dt, wish);
+		thirdPersonCam_.UpdateCamera(dt);
 
 		vec3 p = player_.getFeetPosition();
 		const float lim = GameWorld::kGridHalf - 0.5f;
@@ -918,7 +921,6 @@ public:
 			}
 		}
 		
-		// 
 		updateParticleBursts(dt);
 
 		vec2 hv(player_.getHorizontalVelocity().x, player_.getHorizontalVelocity().z);
@@ -935,13 +937,13 @@ public:
 		} else {
 			const bool alignToCamera = !idleYawHoldEnabled_ || idleSecondsAccum_ < kIdleYawHoldSeconds;
 			if (alignToCamera) {
-				float targetYaw = std::atan2(f.x, f.z);
-				float d = targetYaw - charYaw_;
-				while (d > static_cast<float>(M_PI))
-					d -= 2.0f * static_cast<float>(M_PI);
-				while (d < -static_cast<float>(M_PI))
-					d += 2.0f * static_cast<float>(M_PI);
-				charYaw_ += d * 0.06f;
+				// float targetYaw = std::atan2(f.x, f.z);
+				// float d = targetYaw - charYaw_;
+				// while (d > static_cast<float>(M_PI))
+				// 	d -= 2.0f * static_cast<float>(M_PI);
+				// while (d < -static_cast<float>(M_PI))
+				// 	d += 2.0f * static_cast<float>(M_PI);
+				// charYaw_ += d * 0.06f;
 			}
 		}
 		animTime_ += dt;
@@ -957,7 +959,7 @@ public:
 	void drawScene3D(const mat4 &P, const mat4 &V)
 	{
 		vec3 pivot = player_.getFeetPosition() + vec3(0.0f, cameraPivotHeight_, 0.0f);
-		vec3 eye = thirdPersonCam_.getEye(pivot);
+		vec3 eye = thirdPersonCam_.GetCameraPos();
 		mat4 Vsky = glm::mat4(glm::mat3(V));
 
 		// --- Chunk Drawing ---
@@ -1074,10 +1076,10 @@ public:
 		float aspect = width / (float)height;
 		MatrixStack Pstack;
 		Pstack.pushMatrix();
-		Pstack.perspective(70.0f, aspect, 0.1f, 200.0f);
+		Pstack.perspective(glm::radians(thirdPersonCam_.GetFOV()), aspect, 0.1f, 200.0f);
 		mat4 P = Pstack.topMatrix();
 		vec3 pivot = player_.getFeetPosition() + vec3(0.0f, cameraPivotHeight_, 0.0f);
-		mat4 V = thirdPersonCam_.getViewMatrix(pivot);
+		mat4 V = thirdPersonCam_.GetViewMatrix();
 		Pstack.popMatrix();
 
 		// --- Scene HDR framebuffer (brighter clear helps god-ray mask) ---
@@ -1198,7 +1200,7 @@ public:
 		     << "  collected(score)=" << world_.getCollectedCount()
 		     << "  total_spawned=" << world_.getTotalSpawned()
 		     << "  move_speed=" << player_.getMoveSpeed()
-		     << "  cam_dist=" << thirdPersonCam_.getDistance()
+		    //  << "  cam_dist=" << thirdPersonCam_.getDistance()
 		     << "  jumps_remaining=" << player_.getJumpsRemaining()
 		     << "  vy=" << player_.getVerticalVelocity()
 		     << endl;
@@ -1305,7 +1307,7 @@ private:
 	void syncCameraFloorLimit()
 	{
 		vec3 pivot = player_.getFeetPosition() + vec3(0.0f, cameraPivotHeight_, 0.0f);
-		thirdPersonCam_.applyFloorConstraint(GameWorld::kGroundY + 0.02f, pivot.y);
+		// thirdPersonCam_.ApplyFloorConstraint(GameWorld::kGroundY);
 	}
 
 	string resourceDir_;
@@ -1316,7 +1318,7 @@ private:
 	float moveBlendDisplay_ = 0.0f;
 	float characterScale_ = 1.0f;
 
-	ThirdPersonCamera thirdPersonCam_;
+	FirstPersonCamera thirdPersonCam_;
 	CharacterController player_;
 	Skybox skybox_;
 	GltfMesh characterMesh_;
