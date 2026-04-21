@@ -6,22 +6,37 @@
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
+#include <GLFW/glfw3.h>
 #include "../Program.h"
 #include <iostream>
+#include <cstring>
 
 class Chunk
 {
     public:
         Chunk(); 
 
+        // update OccupancyInts
+        void updateChunk(float deltaTime, bool gridFill, bool floor, bool sphere);
+        // update Buffers
         void updateMesh();
+        // bond buffers
         void bindMesh();
+        // Draw Mesh
         void drawMesh(const Program& prog);
     
     private:
         // For each voxel in occupancyInts will fill an outlining grid.
         // Works with verious voxel and chunk sizes.
         void fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z);
+        void fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int z, int x);
+        glm::vec3 calculateSphere(float deltaTime);
+        void checkSphere(uint32_t* occupancyInt, glm::vec3* voxPosCenter, glm::vec3* spherePos);
+        float time;
+
+        //
+        void updateBuffer();
+        int bufferUpdateMethod;
         // adds a complete cube primitive to the buffers for a given voxel position.
         void addCubePrimitive(glm::vec3* voxPos, int vertIndex);
 
@@ -43,6 +58,10 @@ class Chunk
 
         GLuint cBuffID; // color buffer ID.
         std::vector<GLfloat>cBuff; // color buffer.
+
+        void *vPtr; 
+        void *ePtr; 
+        void *cPtr;
 };
 
 #endif
