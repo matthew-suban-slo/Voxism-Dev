@@ -57,8 +57,11 @@ void FirstPersonCamera::ProcessKeypress(int key, int action){
 	case GLFW_KEY_SPACE:
         key_jump = is_pressed;
         break;
-	 case GLFW_KEY_LEFT_SHIFT:
+	case GLFW_KEY_LEFT_SHIFT:
         key_sprint = is_pressed;
+        break;
+	case GLFW_KEY_X:
+		if(is_pressed) use_free_cam = !use_free_cam;
         break;
     default:
         return;
@@ -77,6 +80,11 @@ glm::mat4 FirstPersonCamera::GetViewMatrix() {
 }
 
 void FirstPersonCamera::UpdateCamera(float dt){
+	if(use_free_cam){
+		UpdateFreeCam(dt);
+		return;
+	}
+
 	// yaw/pitch
 	if (key_yaw_left){
 		yaw -= rot_sensitivity_key;
@@ -181,6 +189,38 @@ void FirstPersonCamera::UpdateCamera(float dt){
 
     cam_pos.y += landing_offset;
 	was_grounded = is_grounded;
+
+	look_at = cam_pos + new_dir;
+}
+
+void FirstPersonCamera::UpdateFreeCam(float dt){
+	pitch = std::max(min_pitch, std::min(max_pitch, pitch));
+	float pitch_rad = glm::radians(pitch);
+	float yaw_rad = glm::radians(yaw);
+
+	// compute new look at
+    glm::vec3 dir = look_at - cam_pos;
+	glm::vec3 new_dir;
+	new_dir.x = length(dir) * cos(pitch_rad) * cos(yaw_rad);
+	new_dir.y = length(dir) * sin(pitch_rad);
+	new_dir.z = length(dir) * cos(pitch_rad) * sin(yaw_rad);
+
+	glm::vec3 forward = glm::normalize(glm::vec3(new_dir.x, new_dir.y, new_dir.z));
+    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0,1,0)));
+
+	float trans_speed = dt * trans_sensitivity;
+	if (key_left){
+		cam_pos -= trans_speed * right;
+	}
+	if (key_right){
+		cam_pos += trans_speed * right;
+	}
+	if (key_forward){
+		cam_pos += trans_speed * forward;
+	}
+	if (key_backward){
+		cam_pos -= trans_speed * forward;
+	}
 
 	look_at = cam_pos + new_dir;
 }

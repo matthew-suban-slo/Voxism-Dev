@@ -56,6 +56,7 @@ private:
 	bool key_pitch_down = false;
 	bool key_jump = false;
 	bool key_sprint = false;
+	bool use_free_cam = false;
 
 	// view bobbing
 	float bob_time = 0.0f;
@@ -91,4 +92,6 @@ private:
 	const float move_back_fov = 57.0f;
 	const float sprint_fov = 72.0f;
 	const float fov_lerp_speed = 8.0f;
+
+	void UpdateFreeCam(float dt);
 };
