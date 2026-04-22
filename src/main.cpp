@@ -949,10 +949,6 @@ public:
 		animTime_ += dt;
 		moveBlendDisplay_ = std::min(1.0f, hspeed / 4.5f);
 
-		// Chunk Update
-		chunk->updateChunk(dt, false,true,true);
-		chunk->updateMesh();
-
 		syncCameraFloorLimit();
 	}
 
@@ -1064,6 +1060,11 @@ public:
 		}
 
 		drawParticleBursts(P, V);
+	}
+
+	void chunkrender(double deltaTime) {
+		chunk->updateChunk(deltaTime, false, true, true);
+		chunk->updateMesh();
 	}
 
 	void render()
@@ -1400,19 +1401,47 @@ int main(int argc, char *argv[])
 	application->windowManager = windowManager;
 	application->init(resourceDir);
 
-	using clock = chrono::high_resolution_clock;
-	auto tPrev = clock::now();
+	// using clock = chrono::high_resolution_clock;
+	// auto tPrev = clock::now();
+	// const double fixedDt = 1.0 / 60.0;
+	// double accumulator = 0.0;
+	// double elapsedStats = 0.0;
+
+	// std::cout << "Platform: " << glfwGetPlatform() << std::endl;
+	// while (!glfwWindowShouldClose(windowManager->getHandle())) {
+	// 	auto tNow = clock::now();
+	// 	glfwPollEvents();
+	// 	chrono::duration<double> frame = tNow - tPrev;
+	// 	tPrev = tNow;
+	// 	double frameTime = std::min(frame.count(), 0.25);
+	// 	accumulator += frameTime;
+	// 	elapsedStats += frameTime;
+
+	// 	while (accumulator >= fixedDt) {
+	// 		application->updateFixedStep(static_cast<float>(fixedDt));
+	// 		accumulator -= fixedDt;
+	// 	}
+
+	// 	application->render();
+	// 	application->printStats(elapsedStats);
+
+	// 	glfwSwapBuffers(windowManager->getHandle());
+	// }
+
 	const double fixedDt = 1.0 / 60.0;
 	double accumulator = 0.0;
 	double elapsedStats = 0.0;
 
+	double tPrev = glfwGetTime();
+
 	std::cout << "Platform: " << glfwGetPlatform() << std::endl;
 	while (!glfwWindowShouldClose(windowManager->getHandle())) {
-		auto tNow = clock::now();
+		double tNow = glfwGetTime();
 		glfwPollEvents();
-		chrono::duration<double> frame = tNow - tPrev;
+		
+		double tDelta = tNow - tPrev;
+		double frameTime = tDelta;
 		tPrev = tNow;
-		double frameTime = std::min(frame.count(), 0.25);
 		accumulator += frameTime;
 		elapsedStats += frameTime;
 
@@ -1420,12 +1449,13 @@ int main(int argc, char *argv[])
 			application->updateFixedStep(static_cast<float>(fixedDt));
 			accumulator -= fixedDt;
 		}
-
+		
+		application->chunkrender(tDelta);
 		application->render();
 		application->printStats(elapsedStats);
-
 		glfwSwapBuffers(windowManager->getHandle());
 	}
+
 
 	windowManager->shutdown();
 	delete application;

@@ -58,7 +58,7 @@ void Chunk::updateChunk(float deltaTime, bool gridFill, bool floor, bool sphere)
             }
         }
     }
-    std::cout << "Mesh Update Time: " << glfwGetTime()-start << std::endl;
+    // std::cout << "Mesh Update Time: " << glfwGetTime()-start << std::endl;
 }
 
 void Chunk::updateMesh()
@@ -103,7 +103,7 @@ void Chunk::updateMesh()
         }
     }
 
-    std::cout << "Mesh Gen Time: " << glfwGetTime()-start << std::endl;
+    // std::cout << "Mesh Gen Time: " << glfwGetTime()-start << std::endl;
     start = glfwGetTime();
     updateBuffer();
     std::cout << "Mesh Upload Time: " << glfwGetTime()-start << std::endl;
@@ -238,9 +238,9 @@ void Chunk::checkSphere(uint32_t* occupancyInt, glm::vec3* voxPosCenter, glm::ve
 }
 
 void Chunk::updateBuffer(){
-    std::cout << "cBuff data: " << cBuff.size()*sizeof(GLfloat) << std::endl;
-    std::cout << "vBuff data: " << vBuff.size()*sizeof(GLfloat) << std::endl;
-    std::cout << "eBuff data: " << eBuff.size()*sizeof(unsigned int) << std::endl;
+    // std::cout << "cBuff data: " << cBuff.size()*sizeof(GLfloat) << std::endl;
+    // std::cout << "vBuff data: " << vBuff.size()*sizeof(GLfloat) << std::endl;
+    // std::cout << "eBuff data: " << eBuff.size()*sizeof(unsigned int) << std::endl;
 
 
     if (bufferUpdateMethod == 2){
