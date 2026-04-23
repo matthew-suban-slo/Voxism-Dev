@@ -27,6 +27,7 @@ Chunk::Chunk(){
     occupancyXsize = chunkSizeInts;
     occupancyYsize = occupancyZsize = chunkSizeInts*32;
     occupancyInts = std::vector<uint32_t>(occupancyXsize*occupancyYsize*occupancyZsize, 0); 
+    userVoxels = std::vector<uint32_t>(occupancyXsize*occupancyYsize*occupancyZsize, 0); 
     std::cout << "occupancyBits Size " << occupancyInts.size() << std::endl;
 }
 
@@ -53,8 +54,13 @@ void Chunk::updateChunk(float deltaTime, bool gridFill, bool floor, bool sphere)
                 if (gridFill) fillMeterGrid(&occupancyInt, x, y, z);
                 if (floor) fillFloor(&occupancyInt, &voxPosCenter, z, x);
                 if (sphere) checkSphere(&occupancyInt, &voxPosCenter, &spherePos);
+
+                int idx = z * occupancyXsize * occupancyYsize + y * occupancyXsize + x;
+                if (idx >= 0 && idx < (int)userVoxels.size()) {
+                    occupancyInt |= userVoxels[idx];
+                }
                 
-                occupancyInts[z*occupancyXsize*occupancyYsize + y*occupancyXsize + x] = occupancyInt;
+                occupancyInts[idx] = occupancyInt;
             }
         }
     }
@@ -359,4 +365,34 @@ void Chunk::addCubePrimitive(glm::vec3* voxPos, int vertIndex)
     eBuff.push_back(vertIndex + 2); // +y
     eBuff.push_back(vertIndex + 3); // +x+y
     eBuff.push_back(vertIndex + 1); // +x
+}
+
+void Chunk::addVoxelAtWorldPos(const glm::vec3 &worldPos){
+    if (worldPos.x < 0.0f || worldPos.y < 0.0f || worldPos.z < 0.0f)
+        return;
+
+    int vx = (int)glm::floor(worldPos.x / voxSizeMeters);
+    int vy = (int)glm::floor(worldPos.y / voxSizeMeters);
+    int vz = (int)glm::floor(worldPos.z / voxSizeMeters);
+
+    return addVoxelAtIndex(vx, vy, vz);
+}
+
+void Chunk::addVoxelAtIndex(int vx, int vy, int vz){
+    if (vx < 0 || vy < 0 || vz < 0)
+        return;
+
+    int maxXBits = occupancyXsize * 32;
+    if (vx >= maxXBits || vy >= occupancyYsize || vz >= occupancyZsize)
+        return;
+
+    int xInt = vx / 32;
+    int bit = vx % 32;
+
+    int idx = vz * occupancyXsize * occupancyYsize +
+              vy * occupancyXsize +
+              xInt;
+
+    userVoxels[idx] |= (1u << bit);
+    return;
 }

@@ -224,3 +224,23 @@ void FirstPersonCamera::UpdateFreeCam(float dt){
 
 	look_at = cam_pos + new_dir;
 }
+
+glm::vec3 FirstPersonCamera::GetForward() const{
+	float yawRad = glm::radians(yaw);
+	float pitchRad = glm::radians(pitch);
+
+	glm::vec3 forward;
+	forward.x = cosf(pitchRad) * cosf(yawRad);
+	forward.y = sinf(pitchRad);
+	forward.z = cosf(pitchRad) * sinf(yawRad);
+	return glm::normalize(forward);
+}
+
+glm::vec3 FirstPersonCamera::GetRight() const{
+	const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+	return glm::normalize(glm::cross(GetForward(), worldUp));
+}
+
+glm::vec3 FirstPersonCamera::GetUp() const{
+	return glm::normalize(glm::cross(GetRight(), GetForward()));
+}

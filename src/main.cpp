@@ -27,6 +27,11 @@
 #include "Texture.h"
 #include "WindowManager.h"
 #include "world/Chunk.h"
+#include "Tool.h"
+#include "Crosshair.h"
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_glfw.h>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader/tiny_obj_loader.h>
@@ -191,6 +196,9 @@ public:
 			glDeleteVertexArrays(1, &particleVao_);
 		if (particleVbo_)
 			glDeleteBuffers(1, &particleVbo_);
+		ImGui_ImplOpenGL3_Shutdown();
+		ImGui_ImplGlfw_Shutdown();
+		ImGui::DestroyContext();
 	}
 
 	void init(const string &resourceDirectory)
@@ -338,6 +346,29 @@ public:
 		setupPostProcess(fbW, fbH);
 
 		lastStatsPrint_ = 0.0;
+
+		toolView_.init(resourceDirectory, texProg_, collectibleTex_, groundTexGl_);
+		toolView_.setOffset(vec3(0.22f, -0.18f, 0.55f));
+		toolView_.setRotationDeg(vec3(-15.0f, 180.0f, -12.0f));
+		toolView_.setScale(vec3(0.05f, 0.05f, 0.85f));
+		toolView_.setFov(55.0f);
+
+		crosshair_.init(resourceDirectory);
+		crosshair_.setSize(8.0f);
+		crosshair_.setThickness(2.0f);
+		crosshair_.setGap(5.0f);
+		crosshair_.setColor(vec3(1.0f, 1.0f, 1.0f));
+
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGuiIO &io = ImGui::GetIO();
+		(void)io;
+
+		ImGui::StyleColorsDark();
+
+		const char *glsl_version = "#version 330";
+		ImGui_ImplGlfw_InitForOpenGL(windowManager->getHandle(), true);
+		ImGui_ImplOpenGL3_Init(glsl_version);
 	}
 
 	void initPostProcessShaders(const string &resourceDirectory)
@@ -845,13 +876,24 @@ public:
 	void mouseCallback(GLFWwindow *window, int button, int action, int mods) override
 	{
 		(void)mods;
+
 		if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-			mouseLocked_ = true;
-			firstMouse_ = true;
-			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-			if (glfwRawMouseMotionSupported()) {
-				glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+			if (!mouseLocked_) {
+				mouseLocked_ = true;
+				firstMouse_ = true;
+				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+				if (glfwRawMouseMotionSupported()) {
+					glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+				}
+				return;
 			}
+
+			glm::vec3 eye = thirdPersonCam_.GetCameraPos();
+			glm::vec3 forward = glm::normalize(thirdPersonCam_.GetForward());
+			glm::vec3 placePos = eye + forward * 1.0f;
+			chunk->addVoxelAtWorldPos(placePos);
+			chunk->updateMesh();
+			toolView_.triggerUse();
 		}
 	}
 
@@ -922,6 +964,7 @@ public:
 		}
 		
 		updateParticleBursts(dt);
+		toolView_.update(dt);
 
 		vec2 hv(player_.getHorizontalVelocity().x, player_.getHorizontalVelocity().z);
 		float hspeed = glm::length(hv);
@@ -950,6 +993,8 @@ public:
 		moveBlendDisplay_ = std::min(1.0f, hspeed / 4.5f);
 
 		syncCameraFloorLimit();
+		toolView_.setAnimTime(animTime_);
+		toolView_.setMoveBlend(moveBlendDisplay_);
 	}
 
 	void drawScene3D(const mat4 &P, const mat4 &V)
@@ -1190,6 +1235,45 @@ public:
 		glUniform1i(compositeProg_->getUniform("ssaoEnabled"), postToggles_.ssaoEnabled ? 1 : 0);
 		drawFullscreenQuad();
 		compositeProg_->unbind();
+
+		glm::vec3 eye = thirdPersonCam_.GetCameraPos();
+		glm::vec3 lightColor(1.0f, 0.98f, 0.92f);
+
+		toolView_.draw(width, height,
+					V,
+					eye,
+					thirdPersonCam_.GetForward(),
+					thirdPersonCam_.GetRight(),
+					thirdPersonCam_.GetUp(),
+					sunWorld_,
+					lightColor);
+		
+		glDisable(GL_CULL_FACE);
+		glDisable(GL_DEPTH_TEST);
+		glDepthMask(GL_FALSE);
+		crosshair_.draw(width, height);
+		glDepthMask(GL_TRUE);
+		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_CULL_FACE);
+
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+		ImGui::Begin("Debug");
+
+		ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+		ImGui::Text("Camera Pos: %.2f %.2f %.2f",
+					thirdPersonCam_.GetCameraPos().x,
+					thirdPersonCam_.GetCameraPos().y,
+					thirdPersonCam_.GetCameraPos().z);
+
+		ImGui::Checkbox("God Rays", &postToggles_.godRaysEnabled);
+		ImGui::Checkbox("Bloom", &postToggles_.bloomEnabled);
+		ImGui::Checkbox("SSAO", &postToggles_.ssaoEnabled);
+
+		ImGui::End();
+		ImGui::Render();
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 	}
 
 	void printStats(double elapsedTotal)
@@ -1320,6 +1404,8 @@ private:
 	float characterScale_ = 1.0f;
 
 	FirstPersonCamera thirdPersonCam_;
+	ToolView toolView_;
+	Crosshair crosshair_;
 	CharacterController player_;
 	Skybox skybox_;
 	GltfMesh characterMesh_;

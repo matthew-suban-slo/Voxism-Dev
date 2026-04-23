@@ -25,6 +25,9 @@ public:
 	float GetYaw() const { return yaw; }
 	float GetPitch() const { return pitch; }
 	float GetFOV() const {return fov;}
+	glm::vec3 GetForward() const;
+	glm::vec3 GetRight() const;
+	glm::vec3 GetUp() const;
 
 private:
 	float yaw = 0;

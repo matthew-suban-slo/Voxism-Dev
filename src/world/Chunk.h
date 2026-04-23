@@ -24,6 +24,9 @@ class Chunk
         void bindMesh();
         // Draw Mesh
         void drawMesh(const Program& prog);
+
+        void addVoxelAtWorldPos(const glm::vec3 &worldPos);
+        void addVoxelAtIndex(int vx, int vy, int vz);
     
     private:
         // For each voxel in occupancyInts will fill an outlining grid.
@@ -48,6 +51,7 @@ class Chunk
         // int is 32 bits, so we can store 32 voxels in one int.
         std::vector<uint32_t>  occupancyInts;
         int occupancyXsize, occupancyYsize, occupancyZsize; 
+        std::vector<uint32_t> userVoxels;
 
         GLuint vaoID; // vertex array object ID.
         GLuint vBuffID; // vertex buffer ID.
