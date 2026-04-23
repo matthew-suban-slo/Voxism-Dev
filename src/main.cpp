@@ -98,38 +98,6 @@ static void ensureTexcoordsXZ(tinyobj::shape_t &sh)
 	}
 }
 
-static shared_ptr<Shape> loadCollectibleMesh(const string &resourceDirectory, const char *primaryName, const char *fallbackName)
-{
-	vector<tinyobj::shape_t> shapes;
-	vector<tinyobj::material_t> materials;
-	string err;
-	string path = resourceDirectory + "/" + primaryName;
-	if (!tinyobj::LoadObj(shapes, materials, err, path.c_str())) {
-		cerr << "LoadObj failed (" << path << "): " << err << endl;
-		shapes.clear();
-		materials.clear();
-		err.clear();
-		path = resourceDirectory + "/" + fallbackName;
-		if (!tinyobj::LoadObj(shapes, materials, err, path.c_str())) {
-			cerr << "LoadObj failed (" << path << "): " << err << endl;
-			return nullptr;
-		}
-	}
-	if (shapes.empty())
-		return nullptr;
-
-	tinyobj::shape_t &sh = shapes[0];
-	if (sh.mesh.normals.empty())
-		computeNormals(sh.mesh);
-	ensureTexcoordsXZ(sh);
-
-	auto mesh = make_shared<Shape>();
-	mesh->createShape(sh);
-	mesh->measure();
-	mesh->init();
-	return mesh;
-}
-
 /** Tiled procedural ground ( RGB8, power-of-2 ), style similar to tiled terrain textures. */
 static GLuint makeGroundCheckerTexture(int size)
 {
@@ -192,10 +160,6 @@ public:
 			glDeleteBuffers(1, &groundVbo_);
 		if (groundTexGl_)
 			glDeleteTextures(1, &groundTexGl_);
-		if (particleVao_)
-			glDeleteVertexArrays(1, &particleVao_);
-		if (particleVbo_)
-			glDeleteBuffers(1, &particleVbo_);
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();
@@ -256,88 +220,20 @@ public:
 	texProg_->addAttribute("vertNor");
 	texProg_->addAttribute("vertTex");
 
-		collectibleTex_ = make_shared<Texture>();
-		collectibleTex_->setFilename(resourceDirectory + "/alpha.bmp");
-		collectibleTex_->init();
-		collectibleTex_->setUnit(0);
-		collectibleTex_->setWrapModes(GL_REPEAT, GL_REPEAT);
-
 		groundTexGl_ = makeGroundCheckerTexture(256);
 
 		skybox_.init(resourceDirectory, "sky_equirect.jpg");
 
-		charProg_ = make_shared<Program>();
-		charProg_->setVerbose(true);
-		charProg_->setShaderNames(shaderPath(resourceDirectory, "scene", "tex_char_anim_vert.glsl"),
-		                          shaderPath(resourceDirectory, "scene", "tex_lit_world_frag.glsl"));
-		if (!charProg_->init())
-			cerr << "charProg failed" << endl;
-		charProg_->addUniform("P");
-		charProg_->addUniform("V");
-		charProg_->addUniform("M");
-		charProg_->addUniform("Texture0");
-		charProg_->addUniform("lightPos");
-		charProg_->addUniform("camPos");
-		charProg_->addUniform("lightColor");
-		charProg_->addUniform("matAmbient");
-		charProg_->addUniform("matDiffuse");
-		charProg_->addUniform("matSpecular");
-		charProg_->addUniform("shininess");
-		charProg_->addUniform("tintColor");
-		charProg_->addUniform("emissiveStrength");
-		charProg_->addUniform("emissiveColor");
-		charProg_->addUniform("useEmissiveMap");
-		charProg_->addUniform("animPhase");
-		charProg_->addUniform("moveBlend");
-		charProg_->addAttribute("vertPos");
-		charProg_->addAttribute("vertNor");
-		charProg_->addAttribute("vertTex");
-
-		string glbPath = resourceDirectory + "/character.glb";
-		if (characterMesh_.loadFromFile(glbPath.c_str())) {
-			characterScale_ = characterMesh_.uniformScaleForHeight(1.65f);
-		} else {
-			cerr << "Optional: place character.glb in resources (Khronos RiggedFigure or similar)." << endl;
-		}
-
-		collectibleMesh_ = loadCollectibleMesh(resourceDirectory, "bunny.obj", "cube.obj");
-		if (!collectibleMesh_) {
-			cerr << "Fatal: could not load any collectible mesh." << endl;
-		}
-
 		initGroundMesh();
 
-		world_.setCollectibleMesh(collectibleMesh_, 0.35f);
 		world_.reset();
-		collectibleExploded_.clear();
-		particleBursts_.clear();
-		particlePositionsScratch_.clear();
 
-		particleProg_ = make_shared<Program>();
-		particleProg_->setVerbose(true);
-		particleProg_->setShaderNames(shaderPath(resourceDirectory, "particle", "particle_vert.glsl"),
-		                              shaderPath(resourceDirectory, "particle", "particle_frag.glsl"));
-		if (!particleProg_->init())
-			cerr << "particleProg failed" << endl;
-		particleProg_->addUniform("P");
-		particleProg_->addUniform("V");
-		particleProg_->addUniform("pointSize");
-		particleProg_->addUniform("particleColor");
-		particleProg_->addAttribute("vertPos");
-		glGenVertexArrays(1, &particleVao_);
-		glGenBuffers(1, &particleVbo_);
-		glBindVertexArray(particleVao_);
-		glBindBuffer(GL_ARRAY_BUFFER, particleVbo_);
 		glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 3 * 4096, nullptr, GL_DYNAMIC_DRAW);
 		glEnableVertexAttribArray(0);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
 		glBindVertexArray(0);
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-		player_.setGroundY(GameWorld::kGroundY + 0.05f);
-		player_.setFeetPosition(vec3(0.0f, GameWorld::kGroundY + 0.05f, 6.0f));
-		// thirdPersonCam_.setDistance(5.5f);
-		syncCameraFloorLimit();
 
 		initPostProcessShaders(resourceDirectory);
 
@@ -830,8 +726,8 @@ public:
 
 		thirdPersonCam_.ProcessKeypress(key, action);
 
-		if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
-			player_.tryJump();
+		// if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
+		// 	player_.tryJump();
 
 		auto setKey = [&](int k, bool down) {
 			if (k == GLFW_KEY_W || k == GLFW_KEY_UP)
@@ -923,7 +819,6 @@ public:
 		lastMouseX_ = xpos;
 		lastMouseY_ = ypos;
 		thirdPersonCam_.ProcessMouseMovement(dx, dy);
-		syncCameraFloorLimit();
 	}
 
 	void scrollCallback(GLFWwindow *window, double xoffset, double yoffset) override
@@ -931,75 +826,21 @@ public:
 		(void)window;
 		(void)xoffset;
 		thirdPersonCam_.ProcessScroll(yoffset);
-		syncCameraFloorLimit();
 	}
 
 	void updateFixedStep(float dt)
 	{
-		// Player Movements
-		// vec3 f = thirdPersonCam_.getMoveForwardXZ();
-		// vec3 r = thirdPersonCam_.getMoveRightXZ();
 		vec3 wish = (static_cast<float>(keyW_) - static_cast<float>(keyS_)) * vec3(1,1,1) + (static_cast<float>(keyD_) - static_cast<float>(keyA_)) * vec3(1,1,1);
-		player_.physicsStep(dt, wish);
 		thirdPersonCam_.UpdateCamera(dt);
-
-		vec3 p = player_.getFeetPosition();
-		const float lim = GameWorld::kGridHalf - 0.5f;
-		// TODO: replace with clamp.
-		p.x = std::max(-lim, std::min(lim, p.x));
-		p.z = std::max(-lim, std::min(lim, p.z));
-		player_.setFeetPosition(p);
-		player_.setGroundY(GameWorld::kGroundY + 0.05f);
-
-		vec3 collectFeet = p + vec3(0.0f, 0.4f, 0.0f);
-		world_.step(dt, collectFeet, 0.45f);
-		if (collectibleExploded_.size() < world_.getObjects().size())
-			collectibleExploded_.resize(world_.getObjects().size(), 0);
-		for (size_t i = 0; i < world_.getObjects().size(); ++i) {
-			const auto &obj = world_.getObjects()[i];
-			if (obj.isCollected() && collectibleExploded_[i] == 0) {
-				spawnCollectionBurst(obj.getPosition());
-				collectibleExploded_[i] = 1;
-			}
-		}
 		
-		updateParticleBursts(dt);
 		toolView_.update(dt);
 
-		vec2 hv(player_.getHorizontalVelocity().x, player_.getHorizontalVelocity().z);
-		float hspeed = glm::length(hv);
-		const bool moveInput = keyW_ || keyS_ || keyA_ || keyD_;
-		const bool moving = moveInput || hspeed > 0.2f;
-		if (moving)
-			idleSecondsAccum_ = 0.0f;
-		else
-			idleSecondsAccum_ += dt;
-
-		if (hspeed > 0.2f) {
-			charYaw_ = std::atan2(player_.getHorizontalVelocity().x, player_.getHorizontalVelocity().z);
-		} else {
-			const bool alignToCamera = !idleYawHoldEnabled_ || idleSecondsAccum_ < kIdleYawHoldSeconds;
-			if (alignToCamera) {
-				// float targetYaw = std::atan2(f.x, f.z);
-				// float d = targetYaw - charYaw_;
-				// while (d > static_cast<float>(M_PI))
-				// 	d -= 2.0f * static_cast<float>(M_PI);
-				// while (d < -static_cast<float>(M_PI))
-				// 	d += 2.0f * static_cast<float>(M_PI);
-				// charYaw_ += d * 0.06f;
-			}
-		}
-		animTime_ += dt;
-		moveBlendDisplay_ = std::min(1.0f, hspeed / 4.5f);
-
-		syncCameraFloorLimit();
 		toolView_.setAnimTime(animTime_);
-		toolView_.setMoveBlend(moveBlendDisplay_);
+		toolView_.setMoveBlend(animTime_);
 	}
 
 	void drawScene3D(const mat4 &P, const mat4 &V)
 	{
-		vec3 pivot = player_.getFeetPosition() + vec3(0.0f, cameraPivotHeight_, 0.0f);
 		vec3 eye = thirdPersonCam_.GetCameraPos();
 		mat4 Vsky = glm::mat4(glm::mat3(V));
 
@@ -1043,68 +884,7 @@ public:
 			glBindVertexArray(0);
 		}
 
-		// Collectibles (471 alpha.bmp + tint for state)
-		if (collectibleTex_ && collectibleTex_->getID() != 0)
-			collectibleTex_->bind(texProg_->getUniform("Texture0"));
-		else {
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, groundTexGl_);
-			glUniform1i(texProg_->getUniform("Texture0"), 0);
-		}
-
-		for (const auto &obj : world_.getObjects()) {
-			if (!obj.getShape() || obj.isCollected())
-				continue;
-			mat4 M = obj.getModelMatrix();
-			glUniformMatrix4fv(texProg_->getUniform("M"), 1, GL_FALSE, value_ptr(M));
-			glUniform3fv(texProg_->getUniform("matAmbient"), 1, value_ptr(obj.getAmbient()));
-			glUniform3fv(texProg_->getUniform("matDiffuse"), 1, value_ptr(obj.getDiffuse()));
-			glUniform3fv(texProg_->getUniform("matSpecular"), 1, value_ptr(obj.getSpecular()));
-			glUniform1f(texProg_->getUniform("shininess"), obj.getShininess());
-			vec3 tint(1.0f, 0.92f, 0.82f);
-			float glowPulse = 0.8f + 0.2f * std::sin(animTime_ * 6.0f);
-			glUniform1f(texProg_->getUniform("emissiveStrength"), 8.5f * glowPulse);
-			glUniform3f(texProg_->getUniform("emissiveColor"), 0.65f, 1.15f, 1.85f);
-			glUniform1i(texProg_->getUniform("useEmissiveMap"), 0);
-			glUniform3fv(texProg_->getUniform("tintColor"), 1, value_ptr(tint));
-			obj.getShape()->draw(texProg_);
-		}
-
 		texProg_->unbind();
-
-		// Player character (glTF bind pose + procedural vertex motion)
-		if (characterMesh_.valid()) {
-			charProg_->bind();
-			glUniformMatrix4fv(charProg_->getUniform("P"), 1, GL_FALSE, value_ptr(P));
-			glUniformMatrix4fv(charProg_->getUniform("V"), 1, GL_FALSE, value_ptr(V));
-			glUniform3fv(charProg_->getUniform("lightPos"), 1, value_ptr(sunWorld_));
-			glUniform3fv(charProg_->getUniform("camPos"), 1, value_ptr(eye));
-			glUniform3fv(charProg_->getUniform("lightColor"), 1, value_ptr(lightColor));
-			glUniform1f(charProg_->getUniform("animPhase"), animTime_);
-			glUniform1f(charProg_->getUniform("moveBlend"), moveBlendDisplay_);
-			glUniform3f(charProg_->getUniform("matAmbient"), 0.12f, 0.12f, 0.14f);
-			glUniform3f(charProg_->getUniform("matDiffuse"), 0.75f, 0.78f, 0.85f);
-			glUniform3f(charProg_->getUniform("matSpecular"), 0.25f, 0.25f, 0.3f);
-			glUniform1f(charProg_->getUniform("shininess"), 24.0f);
-			glUniform3f(charProg_->getUniform("tintColor"), 1.0f, 1.0f, 1.0f);
-			glUniform1f(charProg_->getUniform("emissiveStrength"), 0.0f);
-			glUniform3f(charProg_->getUniform("emissiveColor"), 0.0f, 0.0f, 0.0f);
-			glUniform1i(charProg_->getUniform("useEmissiveMap"), 0);
-			mat4 M = translate(mat4(1.0f), player_.getFeetPosition()) * rotate(mat4(1.0f), charYaw_, vec3(0.0f, 1.0f, 0.0f))
-			         * translate(mat4(1.0f), -characterMesh_.pivotLocal()) * scale(mat4(1.0f), vec3(characterScale_));
-			glUniformMatrix4fv(charProg_->getUniform("M"), 1, GL_FALSE, value_ptr(M));
-			if (collectibleTex_ && collectibleTex_->getID() != 0)
-				collectibleTex_->bind(charProg_->getUniform("Texture0"));
-			else {
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, groundTexGl_);
-				glUniform1i(charProg_->getUniform("Texture0"), 0);
-			}
-			characterMesh_.draw(charProg_);
-			charProg_->unbind();
-		}
-
-		drawParticleBursts(P, V);
 	}
 
 	void chunkrender(double deltaTime) {
@@ -1124,7 +904,6 @@ public:
 		Pstack.pushMatrix();
 		Pstack.perspective(glm::radians(thirdPersonCam_.GetFOV()), aspect, 0.1f, 200.0f);
 		mat4 P = Pstack.topMatrix();
-		vec3 pivot = player_.getFeetPosition() + vec3(0.0f, cameraPivotHeight_, 0.0f);
 		mat4 V = thirdPersonCam_.GetViewMatrix();
 		Pstack.popMatrix();
 
@@ -1236,6 +1015,7 @@ public:
 		drawFullscreenQuad();
 		compositeProg_->unbind();
 
+		// tool
 		glm::vec3 eye = thirdPersonCam_.GetCameraPos();
 		glm::vec3 lightColor(1.0f, 0.98f, 0.92f);
 
@@ -1248,6 +1028,7 @@ public:
 					sunWorld_,
 					lightColor);
 		
+		// crosshair
 		glDisable(GL_CULL_FACE);
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(GL_FALSE);
@@ -1256,6 +1037,7 @@ public:
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_CULL_FACE);
 
+		// ui
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
@@ -1276,125 +1058,7 @@ public:
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 	}
 
-	void printStats(double elapsedTotal)
-	{
-		if (elapsedTotal - lastStatsPrint_ < 0.4)
-			return;
-		lastStatsPrint_ = elapsedTotal;
-		cout << "[Game] active(on ground)=" << world_.getActiveObjectCount()
-		     << "  collected(score)=" << world_.getCollectedCount()
-		     << "  total_spawned=" << world_.getTotalSpawned()
-		     << "  move_speed=" << player_.getMoveSpeed()
-		    //  << "  cam_dist=" << thirdPersonCam_.getDistance()
-		     << "  jumps_remaining=" << player_.getJumpsRemaining()
-		     << "  vy=" << player_.getVerticalVelocity()
-		     << endl;
-	}
-
 private:
-	struct Particle {
-		vec3 pos;
-		vec3 vel;
-		float life;
-		float maxLife;
-	};
-
-	struct ParticleBurst {
-		vector<Particle> particles;
-	};
-
-	void spawnCollectionBurst(const vec3 &origin)
-	{
-		ParticleBurst burst;
-		burst.particles.reserve(72);
-		for (int i = 0; i < 72; ++i) {
-			float ang = distYaw_(rngParticles_);
-			float up = distUp_(rngParticles_);
-			float speed = distSpeed_(rngParticles_);
-			vec3 dir(std::sin(ang), up, std::cos(ang));
-			if (length(dir) < 1e-4f)
-				dir = vec3(0.0f, 1.0f, 0.0f);
-			dir = normalize(dir);
-			Particle p;
-			p.pos = origin + vec3(0.0f, 0.2f, 0.0f);
-			p.vel = dir * speed;
-			p.maxLife = 0.95f + 0.45f * distUnit_(rngParticles_);
-			p.life = p.maxLife;
-			burst.particles.push_back(p);
-		}
-		particleBursts_.push_back(std::move(burst));
-	}
-
-	void updateParticleBursts(float dt)
-	{
-		const vec3 gravity(0.0f, -12.0f, 0.0f);
-		for (auto &burst : particleBursts_) {
-			for (auto &p : burst.particles) {
-				p.life -= dt;
-				if (p.life <= 0.0f)
-					continue;
-				p.vel += gravity * dt;
-				p.pos += p.vel * dt;
-				if (p.pos.y < GameWorld::kGroundY + 0.02f) {
-					p.pos.y = GameWorld::kGroundY + 0.02f;
-					p.vel.y *= -0.28f;
-					p.vel.x *= 0.75f;
-					p.vel.z *= 0.75f;
-				}
-			}
-		}
-		particleBursts_.erase(
-			std::remove_if(particleBursts_.begin(), particleBursts_.end(), [](const ParticleBurst &b) {
-				for (const auto &p : b.particles) {
-					if (p.life > 0.0f)
-						return false;
-				}
-				return true;
-			}),
-			particleBursts_.end());
-	}
-
-	void drawParticleBursts(const mat4 &P, const mat4 &V)
-	{
-		if (!particleProg_ || particleBursts_.empty())
-			return;
-		particlePositionsScratch_.clear();
-		for (const auto &burst : particleBursts_) {
-			for (const auto &p : burst.particles) {
-				if (p.life <= 0.0f)
-					continue;
-				particlePositionsScratch_.push_back(p.pos);
-			}
-		}
-		if (particlePositionsScratch_.empty())
-			return;
-
-		particleProg_->bind();
-		glUniformMatrix4fv(particleProg_->getUniform("P"), 1, GL_FALSE, value_ptr(P));
-		glUniformMatrix4fv(particleProg_->getUniform("V"), 1, GL_FALSE, value_ptr(V));
-		glUniform1f(particleProg_->getUniform("pointSize"), 220.0f);
-		glUniform3f(particleProg_->getUniform("particleColor"), 0.65f, 1.15f, 1.85f);
-
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-		glDepthMask(GL_FALSE);
-		glBindVertexArray(particleVao_);
-		glBindBuffer(GL_ARRAY_BUFFER, particleVbo_);
-		glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(particlePositionsScratch_.size() * sizeof(vec3)), particlePositionsScratch_.data());
-		glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(particlePositionsScratch_.size()));
-		glBindVertexArray(0);
-		glDepthMask(GL_TRUE);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glDisable(GL_BLEND);
-		particleProg_->unbind();
-	}
-
-	void syncCameraFloorLimit()
-	{
-		vec3 pivot = player_.getFeetPosition() + vec3(0.0f, cameraPivotHeight_, 0.0f);
-		// thirdPersonCam_.ApplyFloorConstraint(GameWorld::kGroundY);
-	}
-
 	string resourceDir_;
 
 	float cameraPivotHeight_ = 1.15f;
@@ -1406,14 +1070,11 @@ private:
 	FirstPersonCamera thirdPersonCam_;
 	ToolView toolView_;
 	Crosshair crosshair_;
-	CharacterController player_;
 	Skybox skybox_;
-	GltfMesh characterMesh_;
-	shared_ptr<Program> charProg_;
+	// GltfMesh characterMesh_;
 
 	shared_ptr<Program> texProg_;
 	shared_ptr<Program> godrayProg_, bloomBrightProg_, blurProg_, compositeProg_;
-	shared_ptr<Program> particleProg_;
 	shared_ptr<Program> sunMaskProg_;
 	shared_ptr<Program> chunkProg_;
 	shared_ptr<Program> ssaoProg_;
@@ -1423,15 +1084,12 @@ private:
 	shared_ptr<Texture> collectibleTex_;
 	GLuint groundTexGl_ = 0;
 
-	shared_ptr<Shape> collectibleMesh_;
-
 	GLuint groundVao_ = 0;
 	GLuint groundVbo_ = 0;
 
 	vec3 sunWorld_;
 
 	GLuint quadVao_ = 0, quadVbo_ = 0;
-	GLuint particleVao_ = 0, particleVbo_ = 0;
 	GLuint sceneFBO_ = 0, sceneColorTex_ = 0;
 	GLuint sceneDepthTex_ = 0;
 	GLuint sceneDepthRBO_ = 0;
@@ -1446,14 +1104,6 @@ private:
 	int postW_ = 0, postH_ = 0;
 
 	GameWorld world_;
-	vector<uint8_t> collectibleExploded_;
-	vector<ParticleBurst> particleBursts_;
-	vector<vec3> particlePositionsScratch_;
-	std::mt19937 rngParticles_{std::random_device{}()};
-	std::uniform_real_distribution<float> distUnit_{0.0f, 1.0f};
-	std::uniform_real_distribution<float> distYaw_{0.0f, static_cast<float>(2.0 * M_PI)};
-	std::uniform_real_distribution<float> distUp_{0.2f, 1.2f};
-	std::uniform_real_distribution<float> distSpeed_{2.5f, 7.2f};
 
 	bool keyW_ = false, keyS_ = false, keyA_ = false, keyD_ = false;
 
@@ -1487,33 +1137,6 @@ int main(int argc, char *argv[])
 	application->windowManager = windowManager;
 	application->init(resourceDir);
 
-	// using clock = chrono::high_resolution_clock;
-	// auto tPrev = clock::now();
-	// const double fixedDt = 1.0 / 60.0;
-	// double accumulator = 0.0;
-	// double elapsedStats = 0.0;
-
-	// std::cout << "Platform: " << glfwGetPlatform() << std::endl;
-	// while (!glfwWindowShouldClose(windowManager->getHandle())) {
-	// 	auto tNow = clock::now();
-	// 	glfwPollEvents();
-	// 	chrono::duration<double> frame = tNow - tPrev;
-	// 	tPrev = tNow;
-	// 	double frameTime = std::min(frame.count(), 0.25);
-	// 	accumulator += frameTime;
-	// 	elapsedStats += frameTime;
-
-	// 	while (accumulator >= fixedDt) {
-	// 		application->updateFixedStep(static_cast<float>(fixedDt));
-	// 		accumulator -= fixedDt;
-	// 	}
-
-	// 	application->render();
-	// 	application->printStats(elapsedStats);
-
-	// 	glfwSwapBuffers(windowManager->getHandle());
-	// }
-
 	const double fixedDt = 1.0 / 60.0;
 	double accumulator = 0.0;
 	double elapsedStats = 0.0;
@@ -1538,7 +1161,6 @@ int main(int argc, char *argv[])
 		
 		application->chunkrender(tDelta);
 		application->render();
-		application->printStats(elapsedStats);
 		glfwSwapBuffers(windowManager->getHandle());
 	}
 
