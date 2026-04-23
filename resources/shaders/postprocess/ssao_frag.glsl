@@ -29,7 +29,7 @@ void main() {
     // Step 2: Estimate view-space normal from depth cross-derivatives
     vec3 ddx = reconstructViewPos(TexCoords + vec2(dFdx(TexCoords.x), 0.0)) - fragPos;
     vec3 ddy = reconstructViewPos(TexCoords + vec2(0.0, dFdy(TexCoords.y))) - fragPos;
-    vec3 normal = normalize(cross(ddy, ddx));
+    vec3 normal = normalize(cross(ddx, ddy));
     
     // Step 3: Build TBN matrix using noise texture
     vec3 randomVec = normalize(texture(noiseTex, TexCoords * noiseScale).xyz);
