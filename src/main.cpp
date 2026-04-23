@@ -243,7 +243,7 @@ public:
 
 		lastStatsPrint_ = 0.0;
 
-		toolView_.init(resourceDirectory, texProg_, collectibleTex_, groundTexGl_);
+		toolView_.init(resourceDirectory, texProg_, groundTexGl_);
 		toolView_.setOffset(vec3(0.22f, -0.18f, 0.55f));
 		toolView_.setRotationDeg(vec3(-15.0f, 180.0f, -12.0f));
 		toolView_.setScale(vec3(0.05f, 0.05f, 0.85f));

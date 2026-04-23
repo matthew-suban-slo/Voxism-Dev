@@ -112,12 +112,10 @@ shared_ptr<Shape> ToolView::loadMesh(const string &resourceDirectory,
 
 bool ToolView::init(const string &resourceDirectory,
                     const shared_ptr<Program> &litProgram,
-                    const shared_ptr<Texture> &defaultTexture,
-                    GLuint fallbackTexture)
+                    GLuint textureID)
 {
 	prog_ = litProgram;
-	texture_ = defaultTexture;
-	fallbackTexture_ = fallbackTexture;
+	textureID_ = textureID;
 
 	mesh_ = loadMesh(resourceDirectory, "tool.obj", "cube.obj");
 	if (!mesh_) {
@@ -126,7 +124,6 @@ bool ToolView::init(const string &resourceDirectory,
 	}
 	return true;
 }
-
 void ToolView::triggerUse(){
 	useAnimating_ = true;
 	useAnimTime_ = 0.0f;
@@ -221,13 +218,9 @@ void ToolView::draw(int width,
 	glUniform3f(prog_->getUniform("emissiveColor"), 0.0f, 0.0f, 0.0f);
 	glUniform1i(prog_->getUniform("useEmissiveMap"), 0);
 
-	if (texture_ && texture_->getID() != 0) {
-		texture_->bind(prog_->getUniform("Texture0"));
-	} else {
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, fallbackTexture_);
-		glUniform1i(prog_->getUniform("Texture0"), 0);
-	}
+	glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureID_);
+    glUniform1i(prog_->getUniform("Texture0"), 0);
 
 	glEnable(GL_DEPTH_TEST);
 	glClear(GL_DEPTH_BUFFER_BIT);

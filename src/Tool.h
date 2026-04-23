@@ -16,9 +16,8 @@ public:
 	~ToolView() = default;
 
 	bool init(const std::string &resourceDirectory,
-	          const std::shared_ptr<Program> &litProgram,
-	          const std::shared_ptr<Texture> &defaultTexture,
-	          GLuint fallbackTexture);
+          const std::shared_ptr<Program> &litProgram,
+          GLuint textureID);
 
     void draw(int width,
           int height,
@@ -54,10 +53,9 @@ private:
 
 private:
 	std::shared_ptr<Program> prog_;
-	std::shared_ptr<Texture> texture_;
 	std::shared_ptr<Shape> mesh_;
 
-	GLuint fallbackTexture_ = 0;
+	GLuint textureID_ = 0;
 
 	bool visible_ = true;
 	bool useBob_ = true;
