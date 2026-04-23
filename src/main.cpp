@@ -137,8 +137,8 @@ static std::string shaderPath(const std::string& resourceDir,
 }
 
 struct PostProcessToggle {
-    bool godRaysEnabled  = true;
-    bool bloomEnabled    = true;
+    bool godRaysEnabled  = false;
+    bool bloomEnabled    = false;
     bool ssaoEnabled     = true;
     float godrayStrength = 1.35f;
     float bloomStrength  = 1.6f;

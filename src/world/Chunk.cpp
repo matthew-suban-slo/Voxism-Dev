@@ -2,7 +2,7 @@
 
 Chunk::Chunk(){
     // Input parameters for chunks
-    voxPerMeter = 4; // must be 2^n.
+    voxPerMeter = 8; // must be 2^n.
     int chunkSizeMeters = 16; 
     bufferUpdateMethod = 0;
     time = 0;
