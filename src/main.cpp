@@ -746,9 +746,9 @@ public:
 			setKey(key, false);
 
 		if (key == GLFW_KEY_Z && action == GLFW_PRESS)
-			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			wireframe_ = true;
 		if (key == GLFW_KEY_Z && action == GLFW_RELEASE)
-			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+			wireframe_ = false;
 
 		if (key == GLFW_KEY_T && action == GLFW_PRESS) {
 			idleYawHoldEnabled_ = !idleYawHoldEnabled_;
@@ -912,7 +912,11 @@ public:
 		glViewport(0, 0, postW_, postH_);
 		glClearColor(0.24f, 0.3f, 0.42f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		if (wireframe_)
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 		drawScene3D(P, V);
+		if (wireframe_)
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		vec4 sunClip = P * V * vec4(sunWorld_, 1.0f);
@@ -1106,6 +1110,7 @@ private:
 	GameWorld world_;
 
 	bool keyW_ = false, keyS_ = false, keyA_ = false, keyD_ = false;
+	bool wireframe_ = false;
 
 	PostProcessToggle postToggles_;
 
