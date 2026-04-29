@@ -211,10 +211,9 @@ void Chunk::fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z)
 {
     int bitShifts = 32/cm.voxPerMeter;
     for(int shiftN = 0; shiftN < bitShifts; shiftN++){
-        // random grass stuff
-        // if (z%cm.voxPerMeter == 0 || y%cm.voxPerMeter == 0){
-        //     *occupancyInt |= (0b1 << cm.voxPerMeter*shiftN);
-        // }
+        if (z%cm.voxPerMeter == 0 || y%cm.voxPerMeter == 0){
+            *occupancyInt |= (0b1 << cm.voxPerMeter*shiftN);
+        }
         if (y%cm.voxPerMeter == 0 && z%cm.voxPerMeter == 0){
             *occupancyInt |= 0b11111111111111111111111111111111;
         }
@@ -248,9 +247,10 @@ void Chunk::fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int z, in
     if (voxPosCenter->y <= cm.voxSizeMeters){
         *occupancyInt |= 0b11111111111111111111111111111111;
     }
-    else if (voxPosCenter->y <= cm.voxSizeMeters*3 && z%(x+5) == 0){
-        *occupancyInt |= 0b1000000000001000000000001000000 >> (z%5);
-    }
+    // random grass stuff
+    // else if (voxPosCenter->y <= cm.voxSizeMeters*3 && z%(x+5) == 0){
+    //     *occupancyInt |= 0b1000000000001000000000001000000 >> (z%5);
+    // }
 }
 
 void Chunk::updateBuffer(){
