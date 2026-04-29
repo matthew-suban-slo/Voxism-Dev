@@ -3,25 +3,17 @@
 #define _CHUNKMANAGER_H_
 
 #include "Chunk.h"
+#include "ChunkPos.h"
 #include <unordered_map>
 #include <memory>
 #include <deque>
-#include <ChunkModifier.h>
-
-// Stuct used to store the chunk position relative to other chunk positions.
-struct ChunkPos {
-    int x, y, z;
-    bool operator==(const ChunkPos& otherPos) const{
-        return x == otherPos.x && 
-                y == otherPos.y && 
-                z == otherPos.z;
-    }
-};
+#include "IChunkModifier.h"
 
 class ChunkManager {
     public:
         //initialize with the standard size of the world chunks.
-        ChunkManager(int voxPerMeter, int chunkSizeMeters);
+        ChunkManager(int voxPerMeter, float chunkSizeMeters, int renderDistance, int renderHeight);
+        int renderDistance, renderHeight;
         int voxPerMeter; // how many voxels there are per meter
         float voxSizeMeters; // how large in meters each voxel is.
         float chunkSizeMeters; // how many meters is the width of the chunk.
@@ -30,6 +22,8 @@ class ChunkManager {
 
         // Function returns the chunk position for the passed position.
         ChunkPos getChunkPos(glm::vec3& pos);
+
+        std::shared_ptr<Chunk> generateChunk(ChunkPos& chunkPos);
 
         // Modify chunk is given the modifier that is then parsed and attached to the chunks it effects.
         // Chunks are then marked and setup for occupancy updates.
@@ -42,9 +36,6 @@ class ChunkManager {
         // Determines what chunks should be drawn and then
         // binds the chunk data and draws it.
         void drawChunks(const Program& prog);
-
-        // void updateOccupancy();
-        // void updateMesh();
        
     private:
         // Stuct necessary for mapping an xyz of the chunk to the chunk.
@@ -60,9 +51,6 @@ class ChunkManager {
 
         std::deque<std::shared_ptr<Chunk>> occupancyUpdateQueue;
         std::deque<std::shared_ptr<Chunk>> meshUpdateQueue;
-
-
-
 };
 
 #endif

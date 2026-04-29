@@ -26,7 +26,7 @@
 #include "Shape.h"
 #include "Texture.h"
 #include "WindowManager.h"
-#include "world/Chunk.h"
+#include "world/ChunkManager.h"
 #include "Tool.h"
 #include "Crosshair.h"
 #include <imgui.h>
@@ -192,7 +192,6 @@ public:
 		chunkProg_->addUniform("M");
 		chunkProg_->addAttribute("vertPos");
 		chunkProg_->addAttribute("vertColor");
-		chunk->bindMesh();
 
 		// Lit texture pass (world-space Blinn-Phong, 471-style texture sampling)
 		texProg_ = make_shared<Program>();
@@ -787,8 +786,8 @@ public:
 			glm::vec3 eye = thirdPersonCam_.GetCameraPos();
 			glm::vec3 forward = glm::normalize(thirdPersonCam_.GetForward());
 			glm::vec3 placePos = eye + forward * 1.0f;
-			chunk->addVoxelAtWorldPos(placePos);
-			chunk->updateMesh();
+			// chunk->addVoxelAtWorldPos(placePos);
+			// chunk->updateMesh();
 			toolView_.triggerUse();
 		}
 	}
@@ -850,7 +849,7 @@ public:
 		glUniformMatrix4fv(chunkProg_->getUniform("P"), 1, GL_FALSE, value_ptr(P));
 		glUniformMatrix4fv(chunkProg_->getUniform("V"), 1, GL_FALSE, value_ptr(V));
 		glUniformMatrix4fv(chunkProg_->getUniform("M"), 1, GL_FALSE, value_ptr(M));
-		chunk->drawMesh(*chunkProg_);
+		chunkManager->drawChunks(*chunkProg_);
 		chunkProg_->unbind();
 
 		skybox_.draw(P, Vsky);
@@ -888,8 +887,7 @@ public:
 	}
 
 	void chunkrender(double deltaTime) {
-		chunk->updateChunk(deltaTime, false, true, true);
-		chunk->updateMesh();
+		chunkManager->updateChunks();
 	}
 
 	void render()
@@ -1083,7 +1081,12 @@ private:
 	shared_ptr<Program> chunkProg_;
 	shared_ptr<Program> ssaoProg_;
 	shared_ptr<Program> ssaoBlurProg_;
-	shared_ptr<Chunk> chunk = make_shared<Chunk>();
+	shared_ptr<ChunkManager> chunkManager = make_shared<ChunkManager>(
+	8,// voxPerMeter 
+	16,// chunkSizeMeters
+	16,// renderDistance (in meters)
+	16// renderHeight (int meters)
+	);
 
 	shared_ptr<Texture> collectibleTex_;
 	GLuint groundTexGl_ = 0;

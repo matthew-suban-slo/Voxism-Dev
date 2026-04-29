@@ -1,8 +1,14 @@
 #include "ChunkManager.h"
 
-ChunkManager::ChunkManager(int voxPerMeter, int chunkSizeMeters):
+ChunkManager::ChunkManager(
+    int voxPerMeter, 
+    float chunkSizeMeters, 
+    int renderDistance, 
+    int renderHeight):
     voxPerMeter(voxPerMeter), 
     chunkSizeMeters(chunkSizeMeters),
+    renderDistance(renderDistance),
+    renderHeight(renderHeight),
     occupancyUpdateQueue(),
     meshUpdateQueue()
 {
@@ -30,12 +36,24 @@ ChunkManager::ChunkManager(int voxPerMeter, int chunkSizeMeters):
 ChunkPos ChunkManager::getChunkPos(glm::vec3& pos){
     // This math keeps the chunk position rounded down even if negative.
     ChunkPos chunkPos = {
-        glm::floor(pos.x/chunkSizeMeters),
-        glm::floor(pos.y/chunkSizeMeters),
-        glm::floor(pos.z/chunkSizeMeters),
+        static_cast<int>(glm::floor(pos.x/chunkSizeMeters)),
+        static_cast<int>(glm::floor(pos.y/chunkSizeMeters)),
+        static_cast<int>(glm::floor(pos.z/chunkSizeMeters)),
     };
     return chunkPos;
 };
+
+std::shared_ptr<Chunk> ChunkManager::generateChunk(ChunkPos& chunkPos){
+    std::shared_ptr<Chunk> newChunk = std::make_shared<Chunk>(*this, chunkPos);
+    // std::cout << "binding" << std::endl;
+    newChunk->bindMesh();
+    std::cout << "generating" << std::endl;
+    newChunk->generate();
+    // std::cout << "updating" << std::endl;
+    newChunk->updateMesh();
+    // std::cout << "Return" << std::endl;
+    return newChunk; 
+}
 
 void ChunkManager::modifyChunks(IChunkModifier& chunkMod){
     // Figure out which chunks the modifer effects.
@@ -62,10 +80,19 @@ void ChunkManager::updateChunks(){
 }
 
 void ChunkManager::drawChunks(const Program& prog){
-    for (const auto& pair : chunkMap){
-        pair.second->drawMesh(prog);
+    for (int z = -renderDistance/16; z<renderDistance/16; z++){
+        for (int y = -renderHeight/16; y<renderHeight/16; y++){
+            for (int x = -renderDistance/16; x<renderDistance/16; x++){
+                ChunkPos chunkPos = ChunkPos{x, y, z};
+                auto chunk = chunkMap.find(chunkPos);
+                if (chunk == chunkMap.end()){
+                    std::cout << "generating chunk" << std::endl;
+                    chunkMap[chunkPos] = generateChunk(chunkPos);
+                }
+                chunkMap[chunkPos]->drawMesh(prog);
+            }
+        }
     }
-    
 }
 
 

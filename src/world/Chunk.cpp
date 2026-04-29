@@ -1,119 +1,41 @@
 #include "Chunk.h"
+#include "ChunkManager.h"
 
-Chunk::Chunk(){
-    // Input parameters for chunks
-    voxPerMeter = 8; // must be 2^n.
-    int chunkSizeMeters = 16; 
-    bufferUpdateMethod = 0;
-    time = 0;
+Chunk::Chunk(ChunkManager& cm, ChunkPos& cp):
+    cm(cm),
+    bufferUpdateMethod(0), // set to either 0,1, or 2;
+    modifierUpdateQueue()
+    {
+    // intiialize chunk to zeros.
+    occupancyInts = std::vector<uint32_t>(cm.occupancyXsize*cm.occupancyYsize*cm.occupancyZsize, 0); 
+    // intialize const for world position of chunk.
+    worldcp = glm::vec3(cp.x*cm.chunkSizeMeters, 
+                        cp.y*cm.chunkSizeMeters, 
+                        cp.z*cm.chunkSizeMeters);
+    // sanity check for update method.
     assert(bufferUpdateMethod >= 0 && bufferUpdateMethod <= 2);
-
-    // Calculations 
-    voxSizeMeters = 1.0f/voxPerMeter; // in meters.
-    // Best estimate for how many ints needed to store a chunk.
-    if (voxPerMeter >= 32)
-    {
-        // each meter has 32 bits.
-        int intsPerMeter = voxPerMeter/32;
-        chunkSizeInts = chunkSizeMeters*intsPerMeter;
-    }
-    else
-    {
-        // each meter has less than 32 bits.
-        int MetersPerInt = 32/voxPerMeter;
-        chunkSizeInts = glm::ceil(chunkSizeMeters/(double)MetersPerInt);
-    }
-    std::cout << "chunkSizeInts " << chunkSizeInts << std::endl;
-    occupancyXsize = chunkSizeInts;
-    occupancyYsize = occupancyZsize = chunkSizeInts*32;
-    occupancyInts = std::vector<uint32_t>(occupancyXsize*occupancyYsize*occupancyZsize, 0); 
-    userVoxels = std::vector<uint32_t>(occupancyXsize*occupancyYsize*occupancyZsize, 0); 
-    std::cout << "occupancyBits Size " << occupancyInts.size() << std::endl;
 }
 
-void Chunk::updateChunk(float deltaTime, bool gridFill, bool floor, bool sphere){
-    float start = glfwGetTime();
-    // SPHERE DISPLAYING
-    time += deltaTime;
-    glm::vec3 spherePos = calculateSphere(deltaTime);
-    // indexes into occupancyInts
-    for (int z=0; z<occupancyZsize; z++)
+void Chunk::generate(){
+    for (int z=0; z<cm.occupancyZsize; z++)
     {
-        for (int y=0; y<occupancyYsize; y++)
+        for (int y=0; y<cm.occupancyYsize; y++)
         {
-            for (int x=0; x<occupancyXsize; x++)
+            for (int x=0; x<cm.occupancyXsize; x++)
             {
-                uint32_t occupancyInt = 0;
-                // position is 0,0,0 for the first voxel.
+                int occupancyIndex = z * cm.occupancyXsize * cm.occupancyYsize + y * cm.occupancyXsize + x;
+                uint32_t& occupancyInt = occupancyInts[occupancyIndex];
+
                 glm::vec3 voxPosCenter = glm::vec3(
-                    x*32*voxSizeMeters+0.5*voxSizeMeters, // x position of the voxel.
-                    y*voxSizeMeters+0.5*voxSizeMeters, // y position of the voxel.
-                    z*voxSizeMeters+0.5*voxSizeMeters // z position of the voxel.
+                    x*32*cm.voxSizeMeters+0.5*cm.voxSizeMeters, // x position of the voxel.
+                    y*cm.voxSizeMeters+0.5*cm.voxSizeMeters, // y position of the voxel.
+                    z*cm.voxSizeMeters+0.5*cm.voxSizeMeters // z position of the voxel.
                 );
-
-                if (gridFill) fillMeterGrid(&occupancyInt, x, y, z);
-                if (floor) fillFloor(&occupancyInt, &voxPosCenter, z, x);
-                if (sphere) checkSphere(&occupancyInt, &voxPosCenter, &spherePos);
-
-                int idx = z * occupancyXsize * occupancyYsize + y * occupancyXsize + x;
-                if (idx >= 0 && idx < (int)userVoxels.size()) {
-                    occupancyInt |= userVoxels[idx];
-                }
-                
-                occupancyInts[idx] = occupancyInt;
+                fillFloor(&occupancyInt, &voxPosCenter, x, z);
+                fillChunkGrid(&occupancyInt, x, y, z);
             }
         }
     }
-    // std::cout << "Mesh Update Time: " << glfwGetTime()-start << std::endl;
-}
-
-void Chunk::updateMesh()
-{
-    float start = glfwGetTime();
-    // Clear Buffers before generating a new mesh.
-    vBuff.clear();
-    eBuff.clear();  
-    cBuff.clear();
-
-    int cCount = 0;
-    // indexes into occupancyBits
-    for (int z=0; z<occupancyZsize; z++)
-    {
-        for (int y=0; y<occupancyYsize; y++)
-        {
-            for (int x=0; x<occupancyXsize; x++)
-            {
-                // for each bit in the int.
-                uint32_t occupancyInt = occupancyInts[z*occupancyXsize*occupancyYsize + y*occupancyXsize + x];
-                // skip checking each bit if the whole int is empty.
-                if (occupancyInt == 0u) continue;
-
-                for (int bit=0; bit<32; bit++)
-                {
-                    // check if the bit is set.
-                    if (occupancyInt & (1u << bit))
-                    {
-                        // position is 0,0,0 for the first voxel.
-                        glm::vec3 voxPos = glm::vec3(
-                            x*32*voxSizeMeters + bit*voxSizeMeters, // x position of the voxel.
-                            y*voxSizeMeters, // y position of the voxel.
-                            z*voxSizeMeters // z position of the voxel.
-                        );
-
-                        int vertIndex = vBuff.size() / 3; // index of the first vertex for this voxel.
-
-                        addCubePrimitive(&voxPos, vertIndex);
-                    }
-                }
-            }
-        }
-    }
-
-    // std::cout << "Mesh Gen Time: " << glfwGetTime()-start << std::endl;
-    start = glfwGetTime();
-    updateBuffer();
-    std::cout << "Mesh Upload Time: " << glfwGetTime()-start << std::endl;
-
 }
 
 // Generate the vertex array, vertex buffer, and color buffer.
@@ -164,11 +86,89 @@ void Chunk::bindMesh()
     }
 }
 
+void Chunk::updateOccupancy(){
+    // float start = glfwGetTime();
+
+    // indexes into occupancyInts
+    for (int z=0; z<cm.occupancyZsize; z++)
+    {
+        for (int y=0; y<cm.occupancyYsize; y++)
+        {
+            for (int x=0; x<cm.occupancyXsize; x++)
+            {
+                int occupancyIndex = z * cm.occupancyXsize * cm.occupancyYsize + y * cm.occupancyXsize + x;
+                uint32_t& occupancyInt = occupancyInts[occupancyIndex];
+
+                // For each ChunkModifier in updateQueue call checkAndFill()
+                for (auto chunkMod : modifierUpdateQueue){
+                    chunkMod->checkAndFill(occupancyInt, x, y, z);
+                }
+            }
+        }
+    }
+    modifierUpdateQueue.clear();
+    // std::cout << "Mesh Update Time: " << glfwGetTime()-start << std::endl;
+}
+
+void Chunk::updateMesh()
+{
+    // float start = glfwGetTime();
+    
+    // Clear Buffers before generating a new mesh.
+    vBuff.clear();
+    eBuff.clear();  
+    cBuff.clear();
+
+    int cCount = 0;
+    // indexes into occupancyBits
+    for (int z=0; z<cm.occupancyZsize; z++)
+    {
+        for (int y=0; y<cm.occupancyYsize; y++)
+        {
+            for (int x=0; x<cm.occupancyXsize; x++)
+            {
+                // Get occupancyInt
+                int occupancyIndex = z*cm.occupancyXsize*cm.occupancyYsize + y*cm.occupancyXsize + x;
+                uint32_t occupancyInt = occupancyInts[occupancyIndex];
+                
+                // skip checking each bit if the whole int is empty.
+                if (occupancyInt == 0u) continue;
+
+                // check each bit.
+                for (int bit=0; bit<32; bit++)
+                {
+                    // check if the bit is set.
+                    if (occupancyInt & (1u << bit))
+                    {
+                        // position is 0,0,0 for the first voxel.
+                        glm::vec3 voxPos = glm::vec3(
+                            x*32*cm.voxSizeMeters + bit*cm.voxSizeMeters, // x position of the voxel.
+                            y*cm.voxSizeMeters, // y position of the voxel.
+                            z*cm.voxSizeMeters // z position of the voxel.
+                        );
+
+                        int vertIndex = vBuff.size() / 3; // index of the first vertex for this voxel.
+
+                        addCubePrimitive(&voxPos, vertIndex);
+                    }
+                }
+            }
+        }
+    }
+
+    // std::cout << "Mesh Gen Time: " << glfwGetTime()-start << std::endl;
+    // start = glfwGetTime();
+    updateBuffer();
+    // std::cout << "Mesh Upload Time: " << glfwGetTime()-start << std::endl;
+
+}
+
 // Bind buffers and draw.
 void Chunk::drawMesh(const Program& prog)
 {
-    float start = glfwGetTime();
+    // float start = glfwGetTime();
     // Quick Sanity Checks
+    
     assert(vBuff.size() % 3 == 0);
     assert(cBuff.size() % 3 == 0);
 
@@ -176,11 +176,19 @@ void Chunk::drawMesh(const Program& prog)
     glBindVertexArray(vaoID);
 
     GLuint vertAttr = prog.getAttribute("vertPos");
+    if (vertAttr == -1) {
+    std::cerr << "Shader vertex attribute not found in Chunk draw" << std::endl;
+    return;
+    }
     glEnableVertexAttribArray(vertAttr);
     glBindBuffer(GL_ARRAY_BUFFER, vBuffID);
     glVertexAttribPointer(vertAttr, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
     GLuint colorAttr = prog.getAttribute("vertColor");
+    if (colorAttr == -1) {
+    std::cerr << "Shader color attribute not found in Chunk draw" << std::endl;
+    return;
+    }
     glEnableVertexAttribArray(colorAttr);
     glBindBuffer(GL_ARRAY_BUFFER, cBuffID);
     glVertexAttribPointer(colorAttr, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
@@ -194,52 +202,54 @@ void Chunk::drawMesh(const Program& prog)
     glDisableVertexAttribArray(colorAttr);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    std::cout << "Mesh Draw Time: " << glfwGetTime()-start << std::endl;
+    // std::cout << "Mesh Draw Time: " << glfwGetTime()-start << std::endl;
 }   
 
 
 // Private Methods
-
 void Chunk::fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z)
 {
-    int bitShifts = 32/voxPerMeter;
+    int bitShifts = 32/cm.voxPerMeter;
     for(int shiftN = 0; shiftN < bitShifts; shiftN++){
-        if (z%voxPerMeter == 0 || y%voxPerMeter == 0){
-            *occupancyInt |= (0b1 << voxPerMeter*shiftN);
-        }
-        if (y%voxPerMeter == 0 && z%voxPerMeter == 0){
+        // random grass stuff
+        // if (z%cm.voxPerMeter == 0 || y%cm.voxPerMeter == 0){
+        //     *occupancyInt |= (0b1 << cm.voxPerMeter*shiftN);
+        // }
+        if (y%cm.voxPerMeter == 0 && z%cm.voxPerMeter == 0){
             *occupancyInt |= 0b11111111111111111111111111111111;
         }
     } 
 }
 
+void Chunk::fillChunkGrid(uint32_t* occupancyInt, int x, int y, int z)
+{
+    // fill lines in the X direction
+    if ((y == 0 || y == cm.occupancyYsize-1) && 
+        (z == 0 || z == cm.occupancyZsize-1)){
+        *occupancyInt |= 0b11111111111111111111111111111111;
+    }
+    // fill wall on the +x Side
+    else if ((x == 0) &&
+             ((y == 0 || y == cm.occupancyYsize-1) ||
+              (z == 0 || z == cm.occupancyZsize-1))){
+         *occupancyInt |= 0b00000000000000000000000000000001;
+    }
+    // fill wall on the -x side
+    else if ((x == cm.occupancyXsize-1) &&
+             ((y == 0 || y == cm.occupancyYsize-1) ||
+              (z == 0 || z == cm.occupancyZsize-1))){
+         *occupancyInt |= 0b10000000000000000000000000000000;
+    }
+}
+
 void Chunk::fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int z, int x)
 {
     
-    if (voxPosCenter->y <= voxSizeMeters){
+    if (voxPosCenter->y <= cm.voxSizeMeters){
         *occupancyInt |= 0b11111111111111111111111111111111;
     }
-    else if (voxPosCenter->y <= voxSizeMeters*3 && z%(x+5) == 0){
+    else if (voxPosCenter->y <= cm.voxSizeMeters*3 && z%(x+5) == 0){
         *occupancyInt |= 0b1000000000001000000000001000000 >> (z%5);
-    }
-}
-
-glm::vec3 Chunk::calculateSphere(float deltaTime){
-    float radius = 2;
-    glm::vec3 center = glm::vec3(8.0f, 4.0f, 8.0f);
-    glm::vec3 offset = glm::vec3(4*glm::sin(time/1.0f), 2*glm::sin(time/1.0f + 3.14f), 4*glm::cos(time/1.0f));
-    return center+offset;
-}
-
-void Chunk::checkSphere(uint32_t* occupancyInt, glm::vec3* voxPosCenter, glm::vec3* spherePos){
-    if ((voxPosCenter->y > spherePos->y+1) || (voxPosCenter->y < spherePos->y-1)) return;
-    if ((voxPosCenter->z > spherePos->z+1) || (voxPosCenter->z < spherePos->z-1)) return;
-    for (int bit=0; bit<32; bit++)
-    {
-        glm::vec3 voxPosCenterNew = *voxPosCenter + glm::vec3(0.0f+bit*voxSizeMeters, 0.0f, 0.0f);
-        if (glm::length(*spherePos-voxPosCenterNew)<=1){
-            *occupancyInt |= 1u << bit;
-        }
     }
 }
 
@@ -299,9 +309,9 @@ void Chunk::addCubePrimitive(glm::vec3* voxPos, int vertIndex)
         {
             for (int dx=0; dx<=1; dx++)
             {
-                vBuff.push_back(voxPos->x + dx*voxSizeMeters);
-                vBuff.push_back(voxPos->y + dy*voxSizeMeters);
-                vBuff.push_back(voxPos->z + dz*voxSizeMeters);
+                vBuff.push_back(worldcp.x + voxPos->x + dx*cm.voxSizeMeters);
+                vBuff.push_back(worldcp.y + voxPos->y + dy*cm.voxSizeMeters);
+                vBuff.push_back(worldcp.z + voxPos->z + dz*cm.voxSizeMeters);
 
                 cBuff.push_back((voxPos->x)/16.0f); // R
                 cBuff.push_back((voxPos->y)/16.0f); // G
@@ -365,34 +375,4 @@ void Chunk::addCubePrimitive(glm::vec3* voxPos, int vertIndex)
     eBuff.push_back(vertIndex + 2); // +y
     eBuff.push_back(vertIndex + 3); // +x+y
     eBuff.push_back(vertIndex + 1); // +x
-}
-
-void Chunk::addVoxelAtWorldPos(const glm::vec3 &worldPos){
-    if (worldPos.x < 0.0f || worldPos.y < 0.0f || worldPos.z < 0.0f)
-        return;
-
-    int vx = (int)glm::floor(worldPos.x / voxSizeMeters);
-    int vy = (int)glm::floor(worldPos.y / voxSizeMeters);
-    int vz = (int)glm::floor(worldPos.z / voxSizeMeters);
-
-    return addVoxelAtIndex(vx, vy, vz);
-}
-
-void Chunk::addVoxelAtIndex(int vx, int vy, int vz){
-    if (vx < 0 || vy < 0 || vz < 0)
-        return;
-
-    int maxXBits = occupancyXsize * 32;
-    if (vx >= maxXBits || vy >= occupancyYsize || vz >= occupancyZsize)
-        return;
-
-    int xInt = vx / 32;
-    int bit = vx % 32;
-
-    int idx = vz * occupancyXsize * occupancyYsize +
-              vy * occupancyXsize +
-              xInt;
-
-    userVoxels[idx] |= (1u << bit);
-    return;
 }
