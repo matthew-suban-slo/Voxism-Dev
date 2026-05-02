@@ -55,7 +55,7 @@ class Chunk
         // Works with verious voxel and chunk sizes.
         void fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z);
         void fillChunkGrid(uint32_t* occupancyInt, int x, int y, int z);
-        void fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int z, int x);
+        void fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int x, int z);
         // glm::vec3 calculateSphere(float deltaTime);
         // void checkSphere(uint32_t* occupancyInt, glm::vec3* voxPosCenter, glm::vec3* spherePos);
         // float time;

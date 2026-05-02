@@ -1,8 +1,8 @@
 #include "ChunkManager.h"
 
 ChunkManager::ChunkManager(
-    int voxPerMeter, 
-    float chunkSizeMeters, 
+    int voxPerMeter,
+    float chunkSizeMeters,
     int renderDistance, 
     int renderHeight):
     voxPerMeter(voxPerMeter), 
@@ -14,20 +14,11 @@ ChunkManager::ChunkManager(
 {
     // Calculations for voxel and chunk sizes
     voxSizeMeters = 1.0f/voxPerMeter; // in meters.
-    // Best estimate for how many ints needed to store a chunk.
-    if (voxPerMeter >= 32)
-    {
-        // each meter has 32 bits or more.
-        int intsPerMeter = voxPerMeter/32;
-        chunkSizeInts = chunkSizeMeters*intsPerMeter;
-    }
-    else
-    {
-        // each meter has less than 32 bits.
-        int MetersPerInt = 32/voxPerMeter;
-        chunkSizeInts = glm::ceil(chunkSizeMeters/(double)MetersPerInt);
-        chunkSizeMeters = chunkSizeInts*MetersPerInt;
-    }
+
+    // chunkSizeMeters
+    int chunkSizeInts = glm::ceil((voxPerMeter*chunkSizeMeters)/32.0f); //1
+    int chunkSizeVoxels = chunkSizeInts*32;
+    this->chunkSizeMeters = chunkSizeVoxels*voxSizeMeters;
 
     occupancyXsize = chunkSizeInts;
     occupancyYsize = occupancyZsize = chunkSizeInts*32;
@@ -47,7 +38,7 @@ std::shared_ptr<Chunk> ChunkManager::generateChunk(ChunkPos& chunkPos){
     std::shared_ptr<Chunk> newChunk = std::make_shared<Chunk>(*this, chunkPos);
     // std::cout << "binding" << std::endl;
     newChunk->bindMesh();
-    std::cout << "generating" << std::endl;
+    // std::cout << "generating" << std::endl;
     newChunk->generate();
     // std::cout << "updating" << std::endl;
     newChunk->updateMesh();
@@ -80,14 +71,18 @@ void ChunkManager::updateChunks(){
 }
 
 void ChunkManager::drawChunks(const Program& prog){
-    for (int z = -renderDistance/16; z<renderDistance/16; z++){
-        for (int y = -renderHeight/16; y<renderHeight/16; y++){
-            for (int x = -renderDistance/16; x<renderDistance/16; x++){
+    
+    for (int z = -renderDistance/chunkSizeMeters; z<renderDistance/chunkSizeMeters; z++){
+        for (int y = -renderHeight/chunkSizeMeters; y<renderHeight/chunkSizeMeters; y++){
+            for (int x = -renderDistance/chunkSizeMeters; x<renderDistance/chunkSizeMeters; x++){
                 ChunkPos chunkPos = ChunkPos{x, y, z};
                 auto chunk = chunkMap.find(chunkPos);
                 if (chunk == chunkMap.end()){
-                    std::cout << "generating chunk" << std::endl;
+                    
+                    float startTime = glfwGetTime();
                     chunkMap[chunkPos] = generateChunk(chunkPos);
+                    float totalTime = glfwGetTime()-startTime;
+                    std::cout << "ChunkGen (" << chunkPos.x << ", " << chunkPos.y << ", " << chunkPos.z << ") " << std::fixed << std::setprecision(4) << totalTime << "s" << std::endl;
                 }
                 chunkMap[chunkPos]->drawMesh(prog);
             }
