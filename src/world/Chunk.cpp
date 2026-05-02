@@ -228,20 +228,20 @@ void Chunk::fillChunkGrid(uint32_t* occupancyInt, int x, int y, int z)
         *occupancyInt |= 0b11111111111111111111111111111111;
     }
     // fill wall on the +x Side
-    else if ((x == 0) &&
+    if ((x == 0) &&
              ((y == 0 || y == cm.occupancyYsize-1) ||
               (z == 0 || z == cm.occupancyZsize-1))){
          *occupancyInt |= 0b00000000000000000000000000000001;
     }
     // fill wall on the -x side
-    else if ((x == cm.occupancyXsize-1) &&
+    if ((x == cm.occupancyXsize-1) &&
              ((y == 0 || y == cm.occupancyYsize-1) ||
               (z == 0 || z == cm.occupancyZsize-1))){
          *occupancyInt |= 0b10000000000000000000000000000000;
     }
 }
 
-void Chunk::fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int z, int x)
+void Chunk::fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int x, int z)
 {
     
     if (voxPosCenter->y <= cm.voxSizeMeters){
