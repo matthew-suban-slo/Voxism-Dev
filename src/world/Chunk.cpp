@@ -171,11 +171,12 @@ void Chunk::updateMesh()
                     // 001 010001 not
                     // 001 010000
 
-                    // 0     ->    +x
+                //  +X i+1   <-   i-1 0
                     // 001 011100 100 orig
-                    // 001 111001 100 shift carry (left rmb)
+                    // 001 111001 100 shift carry (right lmb)
                     // 001 000110 100 not
-                    // 001 000100 100 
+                    // 001 000100 100 and
+                    // negative X faces
                     if (x!=0){
                         neighbor = occupancyInts[occupancyIndex-1];
                         // carry = (neighbor!=0) && ((neighbor & (1u << 31)) != 0);
@@ -197,6 +198,13 @@ void Chunk::updateMesh()
                     // 111000 shiftLeft
                     // 000111 not
                     // 000100 and (right face)
+
+                //  +X i+1   <-   i-1 0
+                    // 001 011100 100 orig
+                    // 001 101110 100 shift carry (left rmb)
+                    // 001 010001 100 not
+                    // 001 010000 100 and
+                    // Positive X Faces
                     if (x != cm.occupancyXsize-1){
                         neighbor = (occupancyInts[occupancyIndex+1]);
                         // carry = (neighbor!=0) && ((neighbor & 1u) != 0);
@@ -378,13 +386,13 @@ void Chunk::fillChunkGrid(uint32_t* occupancyInt, int x, int y, int z)
         (z == 0 || z == cm.occupancyZsize-1)){
         *occupancyInt |= 0b11111111111111111111111111111111;
     }
-    // fill wall on the +x Side
+    // fill wall on the -x Side
     if ((x == 0) &&
              ((y == 0 || y == cm.occupancyYsize-1) ||
               (z == 0 || z == cm.occupancyZsize-1))){
          *occupancyInt |= 0b00000000000000000000000000000001;
     }
-    // fill wall on the -x side
+    // fill wall on the +x side
     if ((x == cm.occupancyXsize-1) &&
              ((y == 0 || y == cm.occupancyYsize-1) ||
               (z == 0 || z == cm.occupancyZsize-1))){
