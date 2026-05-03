@@ -33,6 +33,7 @@ void Chunk::generate(){
                 );
                 fillFloor(&occupancyInt, &voxPosCenter, x, z);
                 fillChunkGrid(&occupancyInt, x, y, z);
+                // fillMeterGrid(&occupancyInt, x, y, z);
             }
         }
     }
@@ -204,10 +205,8 @@ void Chunk::updateMesh()
                     // Positive X Faces
                     if (x != cm.occupancyXsize-1){
                         neighbor = (occupancyInts[occupancyIndex+1]);
-                        // carry = (neighbor!=0) && ((neighbor & 1u) != 0);
                         carry = (neighbor!=0) && (0==__builtin_clz(neighbor));
                         if (carry){
-                            // occupancyIntMod = occupancyInt << 1u;
                             occupancyIntMod = (occupancyInt << 1u) | (1u); //carry one from the right
                         } else {
                             occupancyIntMod = occupancyInt << 1u;
@@ -368,10 +367,11 @@ void Chunk::drawMesh(const Program& prog)
 // Private Methods
 void Chunk::fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z)
 {
-    int bitShifts = 32/cm.voxPerMeter;
-    for(int shiftN = 0; shiftN < bitShifts; shiftN++){
+    int bitShifts = 32;
+    for(int shiftN = 0; shiftN < bitShifts; shiftN += cm.voxPerMeter){
         if (z%cm.voxPerMeter == 0 || y%cm.voxPerMeter == 0){
-            *occupancyInt |= (0b1 << cm.voxPerMeter*shiftN);
+            // *occupancyInt |= (0b1 << cm.voxPerMeter*shiftN);
+            *occupancyInt |= (1u << (31-shiftN));
         }
         if (y%cm.voxPerMeter == 0 && z%cm.voxPerMeter == 0){
             *occupancyInt |= 0b11111111111111111111111111111111;
