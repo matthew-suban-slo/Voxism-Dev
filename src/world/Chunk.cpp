@@ -162,61 +162,58 @@ void Chunk::updateMesh()
                     // __builtin_clz() //count leading zeros.
                     // __builtin_ctz() //count trailing zeros.
 
-                    // negXFaces x=0 to x=max
-                    // faces <-
-                    // 001 011100 orig
-                    // ----------------------
-                    // 001 001110 shiftRight
-                    // 001 101110 carryBit
-                    // 001 010001 not
-                    // 001 010000
+                                //  +X i+1   <-   i-1 0
+                                    // 001 011100 100 orig
+                                    // 001 111001 100 shift carry (right lmb)
+                                    // 001 000110 100 not
+                                    // 001 000100 100 and
+                                    // negative X faces
 
-                //  +X i+1   <-   i-1 0
+                //   0 i-1   ->   i+1 +X
                     // 001 011100 100 orig
-                    // 001 111001 100 shift carry (right lmb)
-                    // 001 000110 100 not
-                    // 001 000100 100 and
+                    // 001 001110 100 shift Right carry (left rmb)
+                    // 001 110001 100 not
+                    // 001 010000 100 and
                     // negative X faces
                     if (x!=0){
                         neighbor = occupancyInts[occupancyIndex-1];
-                        // carry = (neighbor!=0) && ((neighbor & (1u << 31)) != 0);
-                        carry = (neighbor!=0) && (0==__builtin_clz(neighbor));
-                        if (carry){
-                            // occupancyIntMod = occupancyInt >> 1u;
-                            occupancyIntMod = (occupancyInt << 1u) | (1u); //carry one from the left
-                        } else {
-                            occupancyIntMod = occupancyInt << 1u;
-                        }
-                    } else {
-                        occupancyIntMod = occupancyInt << 1u;
-                        // occupancyIntMod = (occupancyInt >> 1u) | (1u << 31); //carry one from the left
-                    }
-                    negXint = occupancyInt & ~(occupancyIntMod);
-                    negXMask[occupancyIndex] = negXint;
-                    
-                    // 011100 orig
-                    // 111000 shiftLeft
-                    // 000111 not
-                    // 000100 and (right face)
-
-                //  +X i+1   <-   i-1 0
-                    // 001 011100 100 orig
-                    // 001 101110 100 shift carry (left rmb)
-                    // 001 010001 100 not
-                    // 001 010000 100 and
-                    // Positive X Faces
-                    if (x != cm.occupancyXsize-1){
-                        neighbor = (occupancyInts[occupancyIndex+1]);
-                        // carry = (neighbor!=0) && ((neighbor & 1u) != 0);
                         carry = (neighbor!=0) && (0==__builtin_ctz(neighbor));
                         if (carry){
-                            // occupancyIntMod = occupancyInt << 1u;
-                            occupancyIntMod = (occupancyInt >> 1u) | (1u << 31u); //carry one from the right
+                            occupancyIntMod = (occupancyInt >> 1u) | (1u << 31u); //carry one from the left
                         } else {
                             occupancyIntMod = occupancyInt >> 1u;
                         }
                     } else {
                         occupancyIntMod = occupancyInt >> 1u;
+                    }
+                    negXint = occupancyInt & ~(occupancyIntMod);
+                    negXMask[occupancyIndex] = negXint;
+
+                                            //  +X i+1   <-   i-1 0
+                                                // 001 011100 100 orig
+                                                // 001 101110 100 shift carry (left rmb)
+                                                // 001 010001 100 not
+                                                // 001 010000 100 and
+                                                // Positive X Faces
+
+                //   0 i-1   ->   i+1 +x
+                    // 001 011100 100 orig
+                    // 001 111001 100 shift left carry (right lmb)
+                    // 001 000110 100 not
+                    // 001 000100 100 and
+                    // Positive X Faces
+                    if (x != cm.occupancyXsize-1){
+                        neighbor = (occupancyInts[occupancyIndex+1]);
+                        // carry = (neighbor!=0) && ((neighbor & 1u) != 0);
+                        carry = (neighbor!=0) && (0==__builtin_clz(neighbor));
+                        if (carry){
+                            // occupancyIntMod = occupancyInt << 1u;
+                            occupancyIntMod = (occupancyInt << 1u) | (1u); //carry one from the right
+                        } else {
+                            occupancyIntMod = occupancyInt << 1u;
+                        }
+                    } else {
+                        occupancyIntMod = occupancyInt << 1u;
                     }
                     posXint = occupancyInt & ~(occupancyIntMod);
                     posXMask[occupancyIndex] = posXint;
@@ -243,13 +240,16 @@ void Chunk::updateMesh()
                     uint32_t posZint = posZMask[maskIndex];
                     uint32_t negZint = negZMask[maskIndex];
                     // loops until posXint is 0
+
+                    //   ..7654321
+                    //  1010100100
                     while (posXint){
                         // counts the number of trailing zeros.
                         int bit = __builtin_ctz(posXint); // 0 to 31
                         // removes the closest trailing bit
                         posXint &= posXint-1;
                         glm::vec3 voxPos = glm::vec3(
-                            x*32*cm.voxSizeMeters + (bit)*cm.voxSizeMeters, // x position of the voxel.
+                            x*32*cm.voxSizeMeters + (31-bit)*cm.voxSizeMeters, // x position of the voxel.
                             y*cm.voxSizeMeters, // y position of the voxel.
                             z*cm.voxSizeMeters // z position of the voxel.
                         );
@@ -259,7 +259,7 @@ void Chunk::updateMesh()
                         int bit = __builtin_ctz(negXint);
                         negXint &= negXint-1;
                         glm::vec3 voxPos = glm::vec3(
-                            x*32*cm.voxSizeMeters + (bit)*cm.voxSizeMeters, // x position of the voxel.
+                            x*32*cm.voxSizeMeters + (31-bit)*cm.voxSizeMeters, // x position of the voxel.
                             y*cm.voxSizeMeters, // y position of the voxel.
                             z*cm.voxSizeMeters // z position of the voxel.
                         );
@@ -386,14 +386,14 @@ void Chunk::fillChunkGrid(uint32_t* occupancyInt, int x, int y, int z)
         (z == 0 || z == cm.occupancyZsize-1)){
         *occupancyInt |= 0b11111111111111111111111111111111;
     }
-    // fill wall on the -x Side
-    if ((x == 0) &&
+    // fill wall on the +x Side
+    if ((x == cm.occupancyXsize-1) &&
              ((y == 0 || y == cm.occupancyYsize-1) ||
               (z == 0 || z == cm.occupancyZsize-1))){
          *occupancyInt |= 0b00000000000000000000000000000001;
     }
-    // fill wall on the +x side
-    if ((x == cm.occupancyXsize-1) &&
+    // fill wall on the -x side
+    if ((x == 0) &&
              ((y == 0 || y == cm.occupancyYsize-1) ||
               (z == 0 || z == cm.occupancyZsize-1))){
          *occupancyInt |= 0b10000000000000000000000000000000;
