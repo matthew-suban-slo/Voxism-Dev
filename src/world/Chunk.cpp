@@ -482,7 +482,9 @@ void Chunk::updateBuffer(){
 }
 
 void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
-
+    float red = (xPos)/16.0f;
+    float green = (yPos)/16.0f;
+    float blue = (zPos)/16.0f;
     // posX
     if (side == 0){
         // 0 ---- 3
@@ -494,30 +496,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -538,30 +540,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -582,30 +584,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -626,30 +628,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -670,30 +672,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -714,30 +716,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back((xPos)/16.0f); // R
-        cBuff.push_back((yPos)/16.0f); // G
-        cBuff.push_back((zPos)/16.0f); // B
+        cBuff.push_back(red); // R
+        cBuff.push_back(green); // G
+        cBuff.push_back(blue); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
