@@ -60,6 +60,8 @@ class Chunk
         // void checkSphere(uint32_t* occupancyInt, glm::vec3* voxPosCenter, glm::vec3* spherePos);
         // float time;
 
+        // adds a quad to the mesh.
+        void addQuad(int side, float xPos, float yPos, float zPos);
         // adds a complete cube primitive to the buffers for a given voxel position.
         void addCubePrimitive(glm::vec3* voxPos, int vertIndex);
 
