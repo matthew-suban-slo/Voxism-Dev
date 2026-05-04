@@ -56,10 +56,9 @@ class Chunk
         void fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z);
         void fillChunkGrid(uint32_t* occupancyInt, int x, int y, int z);
         void fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int x, int z);
-        // glm::vec3 calculateSphere(float deltaTime);
-        // void checkSphere(uint32_t* occupancyInt, glm::vec3* voxPosCenter, glm::vec3* spherePos);
-        // float time;
 
+        void addGreedyFace(uint32_t* posYMask, int maskIndex, float xPos, float yPos, float zPos, int direction);
+        void addExtentQuad(float anchor, float uStart, float vStart, float uExtent, int vExtent, int dir);
         // adds a quad to the mesh.
         void addQuad(int side, float xPos, float yPos, float zPos);
         // adds a complete cube primitive to the buffers for a given voxel position.

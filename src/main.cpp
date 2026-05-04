@@ -900,7 +900,7 @@ public:
 		float aspect = width / (float)height;
 		MatrixStack Pstack;
 		Pstack.pushMatrix();
-		Pstack.perspective(glm::radians(thirdPersonCam_.GetFOV()), aspect, 0.1f, 200.0f);
+		Pstack.perspective(glm::radians(thirdPersonCam_.GetFOV()), aspect, 0.1f, 2000.0f);
 		mat4 P = Pstack.topMatrix();
 		mat4 V = thirdPersonCam_.GetViewMatrix();
 		Pstack.popMatrix();
@@ -1085,7 +1085,7 @@ private:
 	16,// voxPerMeter 
 	16,// chunkSizeMeters
 	64,// renderDistance (in meters)
-	16// renderHeight (int meters)
+	32// renderHeight (int meters)
 	);
 
 	shared_ptr<Texture> collectibleTex_;
