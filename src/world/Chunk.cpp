@@ -17,13 +17,15 @@ Chunk::Chunk(ChunkManager& cm, ChunkPos& cp):
 }
 
 void Chunk::generate(){
+
+    int yxOffset = cm.occupancyXsize*cm.occupancyYsize;
     for (int z=0; z<cm.occupancyZsize; z++)
     {
         for (int y=0; y<cm.occupancyYsize; y++)
         {
             for (int x=0; x<cm.occupancyXsize; x++)
             {
-                int occupancyIndex = z * cm.occupancyXsize * cm.occupancyYsize + y * cm.occupancyXsize + x;
+                int occupancyIndex = z * yxOffset + y * cm.occupancyXsize + x;
                 uint32_t& occupancyInt = occupancyInts[occupancyIndex];
 
                 glm::vec3 voxPosCenter = glm::vec3(
@@ -90,6 +92,7 @@ void Chunk::bindMesh()
 void Chunk::updateOccupancy(){
     // float start = glfwGetTime();
 
+    int yxOffset = cm.occupancyXsize*cm.occupancyYsize;
     // indexes into occupancyInts
     for (int z=0; z<cm.occupancyZsize; z++)
     {
@@ -97,7 +100,7 @@ void Chunk::updateOccupancy(){
         {
             for (int x=0; x<cm.occupancyXsize; x++)
             {
-                int occupancyIndex = z * cm.occupancyXsize * cm.occupancyYsize + y * cm.occupancyXsize + x;
+                int occupancyIndex = z * yxOffset + y * cm.occupancyXsize + x;
                 uint32_t& occupancyInt = occupancyInts[occupancyIndex];
 
                 // For each ChunkModifier in updateQueue call checkAndFill()
@@ -117,6 +120,7 @@ void Chunk::updateMesh()
     // 1 = binaryMeshing
     // 2 = binaryMeshing and greedy meshing (WIP)
     int updateType = 1;
+    bool greedyMeshing = true;
     int debugMode = 1; // 0 = off, 1 = on.
     float start;
     if (debugMode == 1) start  = glfwGetTime();
@@ -170,8 +174,6 @@ void Chunk::updateMesh()
                     uint32_t occupancyIntMod;
                     uint32_t neighbor;
                     bool carry;
-
-                    
 
                 //   0 i-1   ->   i+1 +x
                     // 001 011100 100 orig
@@ -256,65 +258,108 @@ void Chunk::updateMesh()
             }
         }
         
-        
-        // GENERATE QUADS FROM BITMASKS
-        for (int z=0; z<cm.occupancyZsize; z++)
-        {
-            for (int y=0; y<cm.occupancyYsize; y++)
+        // Simple Quads
+        if (!greedyMeshing){
+            // GENERATE QUADS FROM BITMASKS
+            for (int z=0; z<cm.occupancyZsize; z++)
             {
-                for (int x=0; x<cm.occupancyXsize; x++)
+                for (int y=0; y<cm.occupancyYsize; y++)
                 {
-                    // get mask ints
-                    int maskIndex = z*yxOffset + y*cm.occupancyXsize + x;
-                    uint32_t posXint = posXMask[maskIndex];
-                    uint32_t negXint = negXMask[maskIndex];
-                    uint32_t posYint = posYMask[maskIndex];
-                    uint32_t negYint = negYMask[maskIndex];
-                    uint32_t posZint = posZMask[maskIndex];
-                    uint32_t negZint = negZMask[maskIndex];
-                    
-                    float xPos = x*32*cm.voxSizeMeters; // x position of the voxel.
-                    float yPos = y*cm.voxSizeMeters;
-                    float zPos = z*cm.voxSizeMeters;
+                    for (int x=0; x<cm.occupancyXsize; x++)
+                    {
+                        // get mask ints
+                        int maskIndex = z*yxOffset + y*cm.occupancyXsize + x;
+                        uint32_t posXint = posXMask[maskIndex];
+                        uint32_t negXint = negXMask[maskIndex];
+                        uint32_t posYint = posYMask[maskIndex];
+                        uint32_t negYint = negYMask[maskIndex];
+                        uint32_t posZint = posZMask[maskIndex];
+                        uint32_t negZint = negZMask[maskIndex];
+                        
+                        // float xPos = x*32*cm.voxSizeMeters; // x position of the voxel.
+                        // float yPos = y*cm.voxSizeMeters;
+                        // float zPos = z*cm.voxSizeMeters;
+                        float xPos = x*32; // x position of the voxel.
+                        float yPos = y;
+                        float zPos = z;
+            
+            
+                        // loops until posXint is 0
+                        while (posXint){
+                            // counts the number of trailing zeros.
+                            int bit = __builtin_ctz(posXint); // 0 to 31
+                            // removes the closest trailing bit
+                            posXint &= posXint-1;
+                            // addQuad(0, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
+                            addExtentQuad(xPos+(31-bit)+1, yPos, zPos, 1, 1, 0);
+                        }
+                        while (negXint){
+                            int bit = __builtin_ctz(negXint);
+                            negXint &= negXint-1;
+                            // addQuad(1, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
+                            addExtentQuad(xPos+(31-bit), yPos, zPos, 1, 1, 1);
+                        }
+                        while(posYint){
+                            int bit = __builtin_ctz(posYint);
+                            posYint &= posYint-1;
+                            // addQuad(2, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
+                            addExtentQuad(yPos+1, xPos+(31-bit), zPos, 1, 1, 2);
+                        }
+                        while(negYint){
+                            int bit = __builtin_ctz(negYint);
+                            negYint &= negYint-1;
+                            // addQuad(3, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
+                            addExtentQuad(yPos, xPos+(31-bit), zPos, 1, 1, 3);
+                        }
+                        while(posZint){
+                            int bit = __builtin_ctz(posZint);
+                            posZint &= posZint-1;
+                            // addQuad(4, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
+                            addExtentQuad(zPos+1, xPos+(31-bit), yPos , 1, 1, 4);
+                        }
+                        while(negZint){
+                            int bit = __builtin_ctz(negZint);
+                            negZint &= negZint-1;
+                            // addQuad(5, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
+                            addExtentQuad(zPos, xPos+(31-bit), yPos, 1,1, 5);
+                        }
+                    }
+                }
+            }
+        // Greedy Meshing.
+        } else {
+            for (int z=0; z<cm.occupancyZsize; z++)
+            {
+                for (int y=0; y<cm.occupancyYsize; y++)
+                {
+                    for (int x=0; x<cm.occupancyXsize; x++)
+                    {
+                        int maskIndex = z*yxOffset + y*cm.occupancyXsize + x;
 
-                    // loops until posXint is 0
-                    while (posXint){
-                        // counts the number of trailing zeros.
-                        int bit = __builtin_ctz(posXint); // 0 to 31
-                        // removes the closest trailing bit
-                        posXint &= posXint-1;
-                        addQuad(0, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
-                    }
-                    while (negXint){
-                        int bit = __builtin_ctz(negXint);
-                        negXint &= negXint-1;
-                        addQuad(1, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
-                    }
-                    while(posYint){
-                        int bit = __builtin_ctz(posYint);
-                        posYint &= posYint-1;
-                        addQuad(2, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
-                    }
-                    while(negYint){
-                        int bit = __builtin_ctz(negYint);
-                        negYint &= negYint-1;
-                        addQuad(3, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
-                    }
-                    while(posZint){
-                        int bit = __builtin_ctz(posZint);
-                        posZint &= posZint-1;
-                        addQuad(4, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
-                    }
-                    while(negZint){
-                        int bit = __builtin_ctz(negZint);
-                        negZint &= negZint-1;
-                        addQuad(5, xPos+(31-bit)*cm.voxSizeMeters, yPos, zPos);
+                        while (posXMask[maskIndex] != 0u){
+                            addGreedyFace(posXMask, maskIndex, x*32, y, z, 0);
+                        }
+                        while (negXMask[maskIndex] != 0u){
+                            addGreedyFace(negXMask, maskIndex, x*32, y, z, 1);
+                        }
+                        while (posYMask[maskIndex] != 0u){
+                            addGreedyFace(posYMask, maskIndex, x*32, y, z, 2);
+                        }
+                        while (negYMask[maskIndex] != 0u){
+                            addGreedyFace(negYMask, maskIndex, x*32, y, z, 3);
+                        }
+                        while (posZMask[maskIndex] != 0u){
+                            addGreedyFace(posZMask, maskIndex, x*32, y, z, 4);
+                        }
+                        while (negZMask[maskIndex] != 0u){
+                            addGreedyFace(negZMask, maskIndex, x*32, y, z, 5);
+                        }
                     }
                 }
             }
         }
     }
-    if (updateType == 0){
+    else if (updateType == 0){
         for (int z=0; z<cm.occupancyZsize; z++){
             for (int y=0; y<cm.occupancyYsize; y++){
                 for (int x=0; x<cm.occupancyXsize; x++){
@@ -479,6 +524,290 @@ void Chunk::updateBuffer(){
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eBuffID);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, eBuff.size()*sizeof(unsigned int), eBuff.data(), GL_STREAM_DRAW);
     }
+}
+
+void Chunk::addGreedyFace(uint32_t* mask, int maskIndex,
+                          float xPos, float yPos, float zPos, int direction)
+{
+    // directions 2,3,4,5
+    // Doesn't work with +/-X
+
+    if (direction == 0 || direction == 1){
+        // +X / -X
+    
+        uint32_t* faceInt = &mask[maskIndex];
+        assert(*faceInt != 0u);
+        int leadingZeros = __builtin_clz(*faceInt);
+        int width = 1;   // expands in +Y
+        int height = 1;  // expands in +Z
+        int shiftDistance = 32 - (width + leadingZeros);
+        uint32_t compareInt = (*faceInt >> shiftDistance) << shiftDistance;
+        *faceInt &= ~compareInt; // remove from current
+    
+        // Expand in Y direction
+        bool expandWidth = true;
+        int baseIndex = maskIndex;
+        while (expandWidth){
+            if ((int)yPos + width >= cm.occupancyYsize){
+                break;
+            }
+            int nextIndex = baseIndex + width * cm.occupancyXsize;
+            uint32_t* newFace = &mask[nextIndex];
+    
+            if ( (compareInt & *newFace) == compareInt ){
+                *newFace &= ~compareInt;
+                width++;
+            } else {
+                expandWidth = false;
+            }
+        }
+    
+        // Expand in the Z direction
+        bool expandHeight = true;
+        while (expandHeight){
+            if ((int)zPos + height >= cm.occupancyZsize){
+                break;
+            }
+    
+            // check entire width row at next Z
+            for (int w = 0; w < width; w++){
+                int checkIndex = baseIndex 
+                    + w * cm.occupancyXsize 
+                    + height * cm.occupancyXsize * cm.occupancyYsize;
+    
+                uint32_t* newFace = &mask[checkIndex];
+                if ( (compareInt & *newFace) != compareInt ){
+                    expandHeight = false;
+                    break;
+                }
+            }
+    
+            // if full row valid, remove bits
+            if (expandHeight){
+                for (int w = 0; w < width; w++){
+                    int removeIndex = baseIndex 
+                        + w * cm.occupancyXsize 
+                        + height * cm.occupancyXsize * cm.occupancyYsize;
+                    mask[removeIndex] &= ~compareInt;
+                }
+                height++;
+            }
+        }
+    
+        // +X
+        if (direction == 0){
+            addExtentQuad(xPos+leadingZeros+1, yPos, zPos, width, height, direction);
+        }
+        // -X
+        else {
+            addExtentQuad(xPos+leadingZeros, yPos, zPos, width, height, direction);
+        }
+    } else {
+        // +Y-Y+Z-Z directions
+        uint32_t* faceInt = &mask[maskIndex];
+        assert(*faceInt != 0u);
+        int leadingZeros = __builtin_clz(*faceInt);
+        int width = __builtin_clz(~(*faceInt << leadingZeros)); // how many 1s in a row are there.
+        int shiftDistance = 32 - (width+leadingZeros);
+        uint32_t compareInt = (*faceInt >> (shiftDistance)) << shiftDistance; // isolates the 1s group.
+        *faceInt &= ~compareInt; // removes the ones from the original int
+    
+        // // for Y 2or3
+        // //  width = X direction
+        // //  height = Z direction
+        // // for Z
+        // //  width = X direction
+        // //  height = Y direction
+        // int width = onesSize;
+        int height = 1; 
+    
+        bool tryNext = true;
+        while (tryNext){
+            if ((direction == 2 || direction == 3)){
+                if ((int)zPos + height >= cm.occupancyZsize){
+                    break;
+                }
+                // move in the y direction.
+                maskIndex = maskIndex + cm.occupancyXsize*cm.occupancyYsize;
+            } else {
+                if ((int)yPos + height >= cm.occupancyYsize){
+                    break;
+                }
+                // move in the z direction.
+                maskIndex = maskIndex + cm.occupancyXsize;
+            }
+            
+            uint32_t* newCompareInt = &mask[maskIndex];
+            if ( (compareInt & *newCompareInt) == compareInt){ //if it has similar width
+                *newCompareInt &= ~compareInt; // remove from newCompareInt
+                height++;
+            } 
+            else {
+                tryNext = false;
+            }
+        }
+        // +Y
+        if (direction == 2){
+            addExtentQuad(yPos+1, xPos+leadingZeros, zPos, width, height, direction);
+        }
+        // -Y
+        else if (direction == 3){
+            addExtentQuad(yPos, xPos+leadingZeros, zPos, width, height, direction);
+        }
+        // +Z
+        else if (direction == 4){
+            addExtentQuad(zPos+1, xPos+leadingZeros, yPos, width, height, direction);
+        }
+        // -Z
+        else if (direction == 5){
+            addExtentQuad(zPos, xPos+leadingZeros, yPos, width, height, direction);
+        }
+    }
+}
+
+ void Chunk::addExtentQuad(float anchor, float uStart, float vStart, float uExtent, int vExtent, int dir){
+
+    int vi = vBuff.size() / 3;
+
+    // colors
+    float baseX, baseY, baseZ;
+    if (dir == 0 || dir == 1) {
+        baseX = anchor;
+        baseY = uStart;
+        baseZ = vStart;
+    }else if (dir == 2 || dir == 3) {
+        baseX = uStart;
+        baseY = anchor;
+        baseZ = vStart;
+    } else {
+        baseX = uStart;
+        baseY = vStart;
+        baseZ = anchor;
+    }
+    float red   = baseX / cm.chunkSizeMeters;
+    float green = baseY / cm.chunkSizeMeters;
+    float blue  = baseZ / cm.chunkSizeMeters;
+    // X faces
+    // dir 0=+x, 1=-x
+    // anchor is x axis
+    // u = Y
+    // v = Z
+    if (dir == 0 || dir == 1) {
+        // v0
+        vBuff.push_back(worldcp.x + anchor * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + (uStart+uExtent) * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + (vStart+vExtent) * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    
+        // v1
+        vBuff.push_back(worldcp.x + anchor * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + uStart * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + (vStart+vExtent) * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    
+        // v2
+        vBuff.push_back(worldcp.x + anchor * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + uStart * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + vStart * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    
+        // v3
+        vBuff.push_back(worldcp.x + anchor * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + (uStart+uExtent) * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + vStart * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    }
+
+    // Y faces
+    // dir 2=+Y, 3=-Y
+    // anchor is Y axis
+    // u = X
+    // v = Z
+    else if (dir == 2 || dir == 3) {
+        // v0
+        vBuff.push_back(worldcp.x + uStart * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + anchor * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + (vStart+vExtent) * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    
+        // v1
+        vBuff.push_back(worldcp.x + (uStart+uExtent) * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + anchor * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + (vStart+vExtent) * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    
+        // v2
+        vBuff.push_back(worldcp.x + (uStart+uExtent) * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + anchor * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + vStart * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    
+        // v3
+        vBuff.push_back(worldcp.x + uStart * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + anchor * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + vStart * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    }
+
+    // Z faces
+    // directions 4=+Z, 5=-Z
+    // anchor is Z axis
+    // u = X
+    // v = Y
+    else if (dir == 4 || dir == 5) {
+        // v0
+        vBuff.push_back(worldcp.x + uStart * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + (vStart+vExtent) * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + anchor * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    
+        // v1
+        vBuff.push_back(worldcp.x + uStart * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + vStart * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + anchor * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    
+        // v2
+        vBuff.push_back(worldcp.x + (uStart+uExtent) * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + vStart * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + anchor * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    
+        // v3
+        vBuff.push_back(worldcp.x + (uStart+uExtent) * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.y + (vStart+vExtent) * cm.voxSizeMeters);
+        vBuff.push_back(worldcp.z + anchor * cm.voxSizeMeters);
+    
+        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+    }
+
+    // correct winding
+    if (dir % 2 == 0) {
+        eBuff.push_back(vi+0);
+        eBuff.push_back(vi+1);
+        eBuff.push_back(vi+2);
+        eBuff.push_back(vi+0);
+        eBuff.push_back(vi+2);
+        eBuff.push_back(vi+3);
+    } else {
+        eBuff.push_back(vi+0);
+        eBuff.push_back(vi+2);
+        eBuff.push_back(vi+1);
+        eBuff.push_back(vi+0);
+        eBuff.push_back(vi+3);
+        eBuff.push_back(vi+2);
+    } 
 }
 
 void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
