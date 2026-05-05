@@ -16,7 +16,7 @@ ChunkManager::ChunkManager(
     voxSizeMeters = 1.0f/voxPerMeter; // in meters.
 
     // chunkSizeMeters
-    int chunkSizeInts = glm::ceil((voxPerMeter*chunkSizeMeters)/32.0f); //1
+    chunkSizeInts = glm::ceil((voxPerMeter*chunkSizeMeters)/32.0f); //1
     int chunkSizeVoxels = chunkSizeInts*32;
     this->chunkSizeMeters = chunkSizeVoxels*voxSizeMeters;
 

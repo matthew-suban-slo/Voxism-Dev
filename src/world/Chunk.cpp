@@ -17,6 +17,12 @@ Chunk::Chunk(ChunkManager& cm, ChunkPos& cp):
 }
 
 void Chunk::generate(){
+    // Color Things
+    int chunkSizeVoxels= cm.chunkSizeInts*32;
+    float colorScale = 255.0f / (chunkSizeVoxels - 1);
+    cTexData = std::vector<uint8_t>(4*chunkSizeVoxels*chunkSizeVoxels*chunkSizeVoxels);
+    uint8_t* ptr = cTexData.data();
+    
 
     int yxOffset = cm.occupancyXsize*cm.occupancyYsize;
     for (int z=0; z<cm.occupancyZsize; z++)
@@ -35,16 +41,26 @@ void Chunk::generate(){
                 );
                 fillFloor(&occupancyInt, &voxPosCenter, x, z);
                 fillChunkGrid(&occupancyInt, x, y, z);
-                // fillMeterGrid(&occupancyInt, x, y, z);
+                fillMeterGrid(&occupancyInt, x, y, z);
+
+                // Fill color data
+                for (int bit=0; bit<32; bit++){
+                    *ptr++ = (32*x+bit) * colorScale;
+                    *ptr++ = y * colorScale;
+                    *ptr++ = z * colorScale;
+                    *ptr++ = 255;;
+                }
             }
         }
     }
+
+    glTextureSubImage3D(cTexID, 0, 0, 0, 0, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels, GL_RGBA, GL_UNSIGNED_BYTE, cTexData.data());
 }
 
 // Generate the vertex array, vertex buffer, and color buffer.
 void Chunk::bindMesh()
 {
-    int size = 1000000;
+    int size = 20000;
     // VAO
     glGenVertexArrays(1, &vaoID);
     glBindVertexArray(vaoID);
@@ -62,16 +78,16 @@ void Chunk::bindMesh()
             GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
     }
 
-    // Color Buffer
-    glGenBuffers(1, &cBuffID);
-    glBindBuffer(GL_ARRAY_BUFFER, cBuffID);
+    // Normal Buffer
+    glGenBuffers(1, &nBuffID);
+    glBindBuffer(GL_ARRAY_BUFFER, nBuffID);
     if (bufferUpdateMethod == 2){
         glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_STREAM_DRAW);
     }
     else if (bufferUpdateMethod == 1){
         glBufferStorage(GL_ARRAY_BUFFER, size, NULL,
             GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
-        cPtr = glMapBufferRange(GL_ARRAY_BUFFER, 0, size,
+        nPtr = glMapBufferRange(GL_ARRAY_BUFFER, 0, size,
             GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
     }
 
@@ -87,6 +103,18 @@ void Chunk::bindMesh()
         ePtr = glMapBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, size,
             GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
     }
+
+    // Color Texture
+    glCreateTextures(GL_TEXTURE_3D, 1, &cTexID);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glBindTexture(GL_TEXTURE_3D, cTexID);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    int chunkSizeVoxels= cm.chunkSizeInts*32;
+    glTextureStorage3D(cTexID, 1, GL_RGBA8, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels);
 }
 
 void Chunk::updateOccupancy(){
@@ -123,12 +151,12 @@ void Chunk::updateMesh()
     bool greedyMeshing = true;
     int debugMode = 1; // 0 = off, 1 = on.
     float start;
-    if (debugMode == 1) start  = glfwGetTime();
+    if (debugMode == 1) start = glfwGetTime();
     
     // Clear Buffers before generating a new mesh.
     vBuff.clear();
     eBuff.clear();  
-    cBuff.clear();
+    nBuff.clear();
 
     if (updateType == 1){
         // CREATE BITMASKS
@@ -389,7 +417,7 @@ void Chunk::updateMesh()
  
     if (debugMode == 1) std::cout << "MeshUpdate: " << std::fixed << std::setprecision(4) << glfwGetTime()-start << "s updateType:" << updateType << std::endl;
     // std::cout << "eBuff Size:" << eBuff.size() << std::endl;
-    // std::cout << "cBuff Size:" << cBuff.size() << std::endl;
+    // std::cout << "nBuff Size:" << nBuff.size() << std::endl;
     // std::cout << "vBuff Size:" << vBuff.size() << std::endl;
     
     updateBuffer();
@@ -403,11 +431,17 @@ void Chunk::drawMesh(const Program& prog)
     // Quick Sanity Checks
     
     assert(vBuff.size() % 3 == 0);
-    assert(cBuff.size() % 3 == 0);
+    assert(nBuff.size() % 3 == 0);
+
+    // Bind Uniforms
+    glUniform3fv(prog.getUniform("chunkWorldPos"), 1, glm::value_ptr(worldcp));
+    glUniform1f(prog.getUniform("chunkSizeMeters"), cm.chunkSizeMeters);
+    glUniform1f(prog.getUniform("voxelSizeMeters"), cm.voxSizeMeters);
 
     // Enable and Bind arrays and buffers
-    glBindVertexArray(vaoID);
 
+    // VERTEX ARRAY
+    glBindVertexArray(vaoID);
     GLuint vertAttr = prog.getAttribute("vertPos");
     if (vertAttr == -1) {
     std::cerr << "Shader vertex attribute not found in Chunk draw" << std::endl;
@@ -417,22 +451,32 @@ void Chunk::drawMesh(const Program& prog)
     glBindBuffer(GL_ARRAY_BUFFER, vBuffID);
     glVertexAttribPointer(vertAttr, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-    GLuint colorAttr = prog.getAttribute("vertColor");
-    if (colorAttr == -1) {
-    std::cerr << "Shader color attribute not found in Chunk draw" << std::endl;
+    // COLOR ARRAY 
+    GLuint normalAttr = prog.getAttribute("vertNormal");
+    if (normalAttr == -1) {
+    std::cerr << "Shader vertNormal attribute not found in Chunk draw" << std::endl;
     return;
     }
-    glEnableVertexAttribArray(colorAttr);
-    glBindBuffer(GL_ARRAY_BUFFER, cBuffID);
-    glVertexAttribPointer(colorAttr, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glEnableVertexAttribArray(normalAttr);
+    glBindBuffer(GL_ARRAY_BUFFER, nBuffID);
+    glVertexAttribPointer(normalAttr, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
+    // COLOR TEXTURE
+    GLuint colorTexUniform = prog.getUniform("colorTex");
+    // assert(colorTexUniform != -1);
+    // glBindTextureUnit(0, cTexID); // bind to unit 0
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_3D, cTexID);
+    glUniform1i(colorTexUniform, 0);
+    // ELEMENT ARRAY
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eBuffID);
+    
     
     // Draw mesh
     glDrawElements(GL_TRIANGLES, (int)eBuff.size(), GL_UNSIGNED_INT, (const void *)0);
 
     glDisableVertexAttribArray(vertAttr);
-    glDisableVertexAttribArray(colorAttr);
+    glDisableVertexAttribArray(normalAttr);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     // std::cout << "Mesh Draw Time: " << glfwGetTime()-start << std::endl;
@@ -488,7 +532,7 @@ void Chunk::fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int x, in
 }
 
 void Chunk::updateBuffer(){
-    // std::cout << "cBuff data: " << cBuff.size()*sizeof(GLfloat) << std::endl;
+    // std::cout << "nBuff data: " << nBuff.size()*sizeof(GLfloat) << std::endl;
     // std::cout << "vBuff data: " << vBuff.size()*sizeof(GLfloat) << std::endl;
     // std::cout << "eBuff data: " << eBuff.size()*sizeof(unsigned int) << std::endl;
 
@@ -496,9 +540,9 @@ void Chunk::updateBuffer(){
     if (bufferUpdateMethod == 2){
         // MORE ADVANCED AND FASTER
         // buffer orphaning and SubData update
-        glBindBuffer(GL_ARRAY_BUFFER, cBuffID); 
-        // glBufferData(GL_ARRAY_BUFFER, cBuff.size()*sizeof(GLfloat), NULL, GL_STREAM_DRAW);   
-        glBufferSubData(GL_ARRAY_BUFFER, 0, cBuff.size()*sizeof(GLfloat), cBuff.data());
+        glBindBuffer(GL_ARRAY_BUFFER, nBuffID); 
+        // glBufferData(GL_ARRAY_BUFFER, nBuff.size()*sizeof(GLfloat), NULL, GL_STREAM_DRAW);   
+        glBufferSubData(GL_ARRAY_BUFFER, 0, nBuff.size()*sizeof(GLfloat), nBuff.data());
 
         glBindBuffer(GL_ARRAY_BUFFER, vBuffID);
         // glBufferData(GL_ARRAY_BUFFER, vBuff.size()*sizeof(GLfloat), NULL, GL_STREAM_DRAW);
@@ -509,14 +553,14 @@ void Chunk::updateBuffer(){
         glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, eBuff.size()*sizeof(unsigned int), eBuff.data());
     }
     else if (bufferUpdateMethod == 1){
-        memcpy(cPtr, cBuff.data(), cBuff.size()*sizeof(GLfloat));
+        memcpy(nPtr, nBuff.data(), nBuff.size()*sizeof(GLfloat));
         memcpy(vPtr, vBuff.data(), vBuff.size()*sizeof(GLfloat));
         memcpy(ePtr, eBuff.data(), eBuff.size()*sizeof(unsigned int));
     }
     else if (bufferUpdateMethod == 0){
         // PRIMITIVE BUFFER MANAGEMENT
-        glBindBuffer(GL_ARRAY_BUFFER, cBuffID); 
-        glBufferData(GL_ARRAY_BUFFER, cBuff.size()*sizeof(GLfloat), cBuff.data(), GL_STREAM_DRAW);   
+        glBindBuffer(GL_ARRAY_BUFFER, nBuffID); 
+        glBufferData(GL_ARRAY_BUFFER, nBuff.size()*sizeof(GLfloat), nBuff.data(), GL_STREAM_DRAW);   
 
         glBindBuffer(GL_ARRAY_BUFFER, vBuffID);
         glBufferData(GL_ARRAY_BUFFER, vBuff.size()*sizeof(GLfloat), vBuff.data(), GL_STREAM_DRAW);
@@ -684,42 +728,46 @@ void Chunk::addGreedyFace(uint32_t* mask, int maskIndex,
         baseY = vStart;
         baseZ = anchor;
     }
-    float red   = baseX / cm.chunkSizeMeters;
-    float green = baseY / cm.chunkSizeMeters;
-    float blue  = baseZ / cm.chunkSizeMeters;
+    // float red   = baseX / cm.chunkSizeMeters;
+    // float green = baseY / cm.chunkSizeMeters;
+    // float blue  = baseZ / cm.chunkSizeMeters;
+
+    float norm = dir%2 ? 1.0f : -1.0f;
+
     // X faces
     // dir 0=+x, 1=-x
     // anchor is x axis
     // u = Y
     // v = Z
     if (dir == 0 || dir == 1) {
+        
         // v0
         vBuff.push_back(worldcp.x + anchor * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + (uStart+uExtent) * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + (vStart+vExtent) * cm.voxSizeMeters);
-    
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+
+        nBuff.push_back(norm); nBuff.push_back(0.0f); nBuff.push_back(0.0f);
     
         // v1
         vBuff.push_back(worldcp.x + anchor * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + uStart * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + (vStart+vExtent) * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(norm); nBuff.push_back(0.0f); nBuff.push_back(0.0f);
     
         // v2
         vBuff.push_back(worldcp.x + anchor * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + uStart * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + vStart * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(norm); nBuff.push_back(0.0f); nBuff.push_back(0.0f);
     
         // v3
         vBuff.push_back(worldcp.x + anchor * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + (uStart+uExtent) * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + vStart * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(norm); nBuff.push_back(0.0f); nBuff.push_back(0.0f);
     }
 
     // Y faces
@@ -733,28 +781,28 @@ void Chunk::addGreedyFace(uint32_t* mask, int maskIndex,
         vBuff.push_back(worldcp.y + anchor * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + (vStart+vExtent) * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(0.0f); nBuff.push_back(norm); nBuff.push_back(0.0f);
     
         // v1
         vBuff.push_back(worldcp.x + (uStart+uExtent) * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + anchor * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + (vStart+vExtent) * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(0.0f); nBuff.push_back(norm); nBuff.push_back(0.0f);
     
         // v2
         vBuff.push_back(worldcp.x + (uStart+uExtent) * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + anchor * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + vStart * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(0.0f); nBuff.push_back(norm); nBuff.push_back(0.0f);
     
         // v3
         vBuff.push_back(worldcp.x + uStart * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + anchor * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + vStart * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(0.0f); nBuff.push_back(norm); nBuff.push_back(0.0f);
     }
 
     // Z faces
@@ -768,28 +816,28 @@ void Chunk::addGreedyFace(uint32_t* mask, int maskIndex,
         vBuff.push_back(worldcp.y + (vStart+vExtent) * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + anchor * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(0.0f); nBuff.push_back(0.0f); nBuff.push_back(norm);
     
         // v1
         vBuff.push_back(worldcp.x + uStart * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + vStart * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + anchor * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(0.0f); nBuff.push_back(0.0f); nBuff.push_back(norm);
     
         // v2
         vBuff.push_back(worldcp.x + (uStart+uExtent) * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + vStart * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + anchor * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(0.0f); nBuff.push_back(0.0f); nBuff.push_back(norm);
     
         // v3
         vBuff.push_back(worldcp.x + (uStart+uExtent) * cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + (vStart+vExtent) * cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + anchor * cm.voxSizeMeters);
     
-        cBuff.push_back(red); cBuff.push_back(green); cBuff.push_back(blue);
+        nBuff.push_back(0.0f); nBuff.push_back(0.0f); nBuff.push_back(norm);
     }
 
     // correct winding
@@ -825,30 +873,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(1); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(0); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(1); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(0); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(1); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(0); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(1); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(0); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -869,30 +917,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(-1); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(0); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(-1); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(0); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(-1); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(0); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(-1); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(0); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -913,30 +961,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(1); // G
+        nBuff.push_back(0); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(1); // G
+        nBuff.push_back(0); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(1); // G
+        nBuff.push_back(0); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(1); // G
+        nBuff.push_back(0); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -957,30 +1005,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(-1); // G
+        nBuff.push_back(0); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(-1); // G
+        nBuff.push_back(0); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(-1); // G
+        nBuff.push_back(0); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(-1); // G
+        nBuff.push_back(0); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -1001,30 +1049,32 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
-        // 1 = bottom left
+        nBuff.push_back(0); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(1); // B
+
+                // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
-        // 2 = bottom right
+        nBuff.push_back(0); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(1); // B        
+                // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(1); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 1*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(1); // B
+
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -1045,30 +1095,30 @@ void Chunk::addQuad(int side, float xPos, float yPos, float zPos){
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(-1); // B
         // 1 = bottom left
         vBuff.push_back(worldcp.x + xPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(-1); // B
         // 2 = bottom right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(-1); // B
         // 3 = top right
         vBuff.push_back(worldcp.x + xPos + 0*cm.voxSizeMeters);
         vBuff.push_back(worldcp.y + yPos + 1*cm.voxSizeMeters);
         vBuff.push_back(worldcp.z + zPos + 0*cm.voxSizeMeters);
-        cBuff.push_back(red); // R
-        cBuff.push_back(green); // G
-        cBuff.push_back(blue); // B
+        nBuff.push_back(0); // R
+        nBuff.push_back(0); // G
+        nBuff.push_back(-1); // B
         // tri 1
         eBuff.push_back(vertIndex + 0);
         eBuff.push_back(vertIndex + 2);
@@ -1101,9 +1151,9 @@ void Chunk::addCubePrimitive(glm::vec3* voxPos, int vertIndex)
                 vBuff.push_back(worldcp.y + voxPos->y + dy*cm.voxSizeMeters);
                 vBuff.push_back(worldcp.z + voxPos->z + dz*cm.voxSizeMeters);
 
-                cBuff.push_back((voxPos->x)/16.0f); // R
-                cBuff.push_back((voxPos->y)/16.0f); // G
-                cBuff.push_back((voxPos->z)/16.0f); // B
+                nBuff.push_back(dx == 0 ? -1 : 1); // R
+                nBuff.push_back(dy == 0 ? -1 : 1); // G
+                nBuff.push_back(dz == 0 ? -1 : 1); // B
             }
         }
     }

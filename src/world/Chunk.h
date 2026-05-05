@@ -6,6 +6,7 @@
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <GLFW/glfw3.h>
 #include "../Program.h"
 #include "ChunkPos.h"
@@ -86,13 +87,16 @@ class Chunk
         GLuint eBuffID; // element buffer object ID.
         std::vector<unsigned int> eBuff; // element buffer.
 
-        GLuint cBuffID; // color buffer ID.
-        std::vector<GLfloat>cBuff; // color buffer.
+        GLuint nBuffID; // normal buffer ID.
+        std::vector<GLfloat>nBuff; // normal buffer.
+
+        GLuint cTexID;
+        std::vector<uint8_t> cTexData;
 
         // used for buffer update method 1
         void *vPtr; 
         void *ePtr; 
-        void *cPtr;
+        void *nPtr;
 };
 
 #endif

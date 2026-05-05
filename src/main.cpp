@@ -176,7 +176,7 @@ public:
 
 		glEnable(GL_CULL_FACE);
 
-		sunWorld_ = vec3(6.0f, 18.0f, 10.0f);
+		sunWorld_ = vec3(12.0f, 30.0f, 20.0f);
 
 		// ChunkProg definition
 		chunkProg_ = make_shared<Program>();
@@ -190,8 +190,15 @@ public:
 		chunkProg_->addUniform("P");
 		chunkProg_->addUniform("V");
 		chunkProg_->addUniform("M");
+		chunkProg_->addUniform("chunkWorldPos");
+		chunkProg_->addUniform("chunkSizeMeters");
+		chunkProg_->addUniform("voxelSizeMeters");
+		chunkProg_->addUniform("colorTex");
+		chunkProg_->addUniform("lightPos");
+		chunkProg_->addUniform("camPos");
+		chunkProg_->addUniform("lightColor");
 		chunkProg_->addAttribute("vertPos");
-		chunkProg_->addAttribute("vertColor");
+		chunkProg_->addAttribute("vertNormal");
 
 		// Lit texture pass (world-space Blinn-Phong, 471-style texture sampling)
 		texProg_ = make_shared<Program>();
@@ -843,18 +850,21 @@ public:
 		vec3 eye = thirdPersonCam_.GetCameraPos();
 		mat4 Vsky = glm::mat4(glm::mat3(V));
 
+		vec3 lightColor(1.0f, 0.98f, 0.92f);
+
 		// --- Chunk Drawing ---
 		chunkProg_->bind();
 		mat4 M = mat4(1.0);
 		glUniformMatrix4fv(chunkProg_->getUniform("P"), 1, GL_FALSE, value_ptr(P));
 		glUniformMatrix4fv(chunkProg_->getUniform("V"), 1, GL_FALSE, value_ptr(V));
 		glUniformMatrix4fv(chunkProg_->getUniform("M"), 1, GL_FALSE, value_ptr(M));
+		glUniform3fv(chunkProg_->getUniform("lightPos"), 1, value_ptr(sunWorld_));
+		glUniform3fv(chunkProg_->getUniform("camPos"), 1, value_ptr(eye));
+		glUniform3fv(chunkProg_->getUniform("lightColor"), 1, value_ptr(lightColor));
 		chunkManager->drawChunks(*chunkProg_);
 		chunkProg_->unbind();
 
 		skybox_.draw(P, Vsky);
-
-		vec3 lightColor(1.0f, 0.98f, 0.92f);
 
 		texProg_->bind();
 		glUniformMatrix4fv(texProg_->getUniform("P"), 1, GL_FALSE, value_ptr(P));
@@ -1084,8 +1094,8 @@ private:
 	shared_ptr<ChunkManager> chunkManager = make_shared<ChunkManager>(
 	16,// voxPerMeter 
 	16,// chunkSizeMeters
-	64,// renderDistance (in meters)
-	32// renderHeight (int meters)
+	16,// renderDistance (in meters)
+	16// renderHeight (int meters)
 	);
 
 	shared_ptr<Texture> collectibleTex_;
