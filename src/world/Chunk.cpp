@@ -54,7 +54,10 @@ void Chunk::generate(){
         }
     }
 
-    glTextureSubImage3D(cTexID, 0, 0, 0, 0, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels, GL_RGBA, GL_UNSIGNED_BYTE, cTexData.data());
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels,
+        0, GL_RGBA, GL_UNSIGNED_BYTE, cTexData.data()
+    );
+    // glTextureSubImage3D(cTexID, 0, 0, 0, 0, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels, GL_RGBA, GL_UNSIGNED_BYTE, cTexData.data());
 }
 
 // Generate the vertex array, vertex buffer, and color buffer.
@@ -105,16 +108,41 @@ void Chunk::bindMesh()
     }
 
     // Color Texture
-    glCreateTextures(GL_TEXTURE_3D, 1, &cTexID);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glGenTextures(1, &cTexID);
     glBindTexture(GL_TEXTURE_3D, cTexID);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    int chunkSizeVoxels= cm.chunkSizeInts*32;
-    glTextureStorage3D(cTexID, 1, GL_RGBA8, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels);
+    int chunkSizeVoxels = cm.chunkSizeInts * 32;
+    // Allocate immutable storage is NOT core in 4.1, so use glTexImage3D
+    glTexImage3D(
+        GL_TEXTURE_3D,
+        0,                  // mip level
+        GL_RGBA8,           // internal format
+        chunkSizeVoxels,
+        chunkSizeVoxels,
+        chunkSizeVoxels,
+        0,                  // border (must be 0)
+        GL_RGBA,            // format
+        GL_UNSIGNED_BYTE,   // type
+        nullptr             // no initial data
+    );
+
+
+
+    // glCreateTextures(GL_TEXTURE_3D, 1, &cTexID);
+    // glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    // glBindTexture(GL_TEXTURE_3D, cTexID);
+    // glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    // glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    // glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    // glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    // int chunkSizeVoxels= cm.chunkSizeInts*32;
+    // glTextureStorage3D(cTexID, 1, GL_RGBA8, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels);
 }
 
 void Chunk::updateOccupancy(){
