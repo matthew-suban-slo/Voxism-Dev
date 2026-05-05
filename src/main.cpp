@@ -1092,9 +1092,9 @@ private:
 	shared_ptr<Program> ssaoProg_;
 	shared_ptr<Program> ssaoBlurProg_;
 	shared_ptr<ChunkManager> chunkManager = make_shared<ChunkManager>(
-	8,// voxPerMeter 
+	16,// voxPerMeter 
 	16,// chunkSizeMeters
-	32,// renderDistance (in meters)
+	16,// renderDistance (in meters)
 	16// renderHeight (int meters)
 	);
 
