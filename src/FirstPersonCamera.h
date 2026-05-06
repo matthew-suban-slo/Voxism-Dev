@@ -3,6 +3,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+class ChunkManager;
+
 class FirstPersonCamera {
 public:
 	FirstPersonCamera();
@@ -20,7 +22,7 @@ public:
 	void UpdatePlayerPos(glm::vec3 delta_pos);
 
 	// Must be called every frame
-	void UpdateCamera(float dt);
+	void UpdateCamera(float dt, const ChunkManager *world = nullptr);
 
 	float GetYaw() const { return yaw; }
 	float GetPitch() const { return pitch; }
@@ -82,6 +84,10 @@ private:
 	float landing_spring_strength = 75.0f;
 	float landing_recover_speed = 12.0f;
 	bool was_grounded = false;
+	float step_offset_y = 0.0f;
+	const float step_recover_speed = 14.0f;
+	float max_step_meters = 0.5f;
+	const glm::vec3 player_half_extents = glm::vec3(0.3f, 0.0f, 0.3f);
 
 	// roll on strafe
 	float roll_target = 0.0f;

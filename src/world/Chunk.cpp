@@ -1,5 +1,6 @@
 #include "Chunk.h"
 #include "ChunkManager.h"
+#include <algorithm>
 
 Chunk::Chunk(ChunkManager& cm, ChunkPos& cp):
     cm(cm),
@@ -17,12 +18,19 @@ Chunk::Chunk(ChunkManager& cm, ChunkPos& cp):
 }
 
 void Chunk::generate(){
-    // Color Things
-    int textureSize = cm.chunkSizeInts*16;
-    float colorScale = 255.0f / (textureSize - 1);
-    cTexData = std::vector<uint8_t>(textureSize*textureSize*textureSize);
-    uint8_t* ptr = cTexData.data();
-    
+    const int sideVox = cm.chunkSizeInts * 32;
+    const int textureSize = cm.chunkSizeInts * 16;
+    const float texelWorldSize = cm.voxSizeMeters * 2.0f;
+
+    // Build one world-space heightmap for this chunk footprint (X/Z).
+    std::vector<float> heightMap(sideVox * sideVox, 0.0f);
+    for (int zVox = 0; zVox < sideVox; ++zVox) {
+        const float worldZ = worldcp.z + static_cast<float>(zVox) * cm.voxSizeMeters;
+        for (int xVox = 0; xVox < sideVox; ++xVox) {
+            const float worldX = worldcp.x + static_cast<float>(xVox) * cm.voxSizeMeters;
+            heightMap[zVox * sideVox + xVox] = cm.terrain().heightAt(worldX, worldZ);
+        }
+    }
 
     int yxOffset = cm.occupancyXsize*cm.occupancyYsize;
     for (int z=0; z<cm.occupancyZsize; z++)
@@ -33,26 +41,25 @@ void Chunk::generate(){
             {
                 int occupancyIndex = z * yxOffset + y * cm.occupancyXsize + x;
                 uint32_t& occupancyInt = occupancyInts[occupancyIndex];
+                fillTerrain(&occupancyInt, x, y, z, heightMap.data());
+            }
+        }
+    }
 
-                glm::vec3 voxPosCenter = glm::vec3(
-                    x*32*cm.voxSizeMeters+0.5*cm.voxSizeMeters, // x position of the voxel.
-                    y*cm.voxSizeMeters+0.5*cm.voxSizeMeters, // y position of the voxel.
-                    z*cm.voxSizeMeters+0.5*cm.voxSizeMeters // z position of the voxel.
-                );
-                fillFloor(&occupancyInt, &voxPosCenter, x, z);
-                fillChunkGrid(&occupancyInt, x, y, z);
-                // fillMeterGrid(&occupancyInt, x, y, z);
-
-                // Fill color data
-                if (y%2 == 0 && z%2 == 0)
-                for (int bit=0; bit<32; bit+=2){
-                    if (y==0)*ptr++ = 0u;
-                    else *ptr++ = 1u;
-                    // *ptr++ = (32*x+bit) * colorScale;
-                    // *ptr++ = y * colorScale;
-                    // *ptr++ = z * colorScale;
-                    // *ptr++ = 255;;
-                }
+    // Material ID volume (half resolution in each axis; sampled in shader as 2x voxels).
+    cTexData = std::vector<uint8_t>(textureSize * textureSize * textureSize, 1u);
+    for (int tz = 0; tz < textureSize; ++tz) {
+        const int zVox = std::min(sideVox - 1, tz * 2);
+        const float worldZ = worldcp.z + (static_cast<float>(tz) + 0.5f) * texelWorldSize;
+        for (int ty = 0; ty < textureSize; ++ty) {
+            const float worldY = worldcp.y + (static_cast<float>(ty) + 0.5f) * texelWorldSize;
+            for (int tx = 0; tx < textureSize; ++tx) {
+                const int xVox = std::min(sideVox - 1, tx * 2);
+                const float worldX = worldcp.x + (static_cast<float>(tx) + 0.5f) * texelWorldSize;
+                const float surfaceHeight = heightMap[zVox * sideVox + xVox];
+                const uint8_t matId = cm.terrain().materialAt(worldX, worldZ, worldY, surfaceHeight);
+                const int texIndex = (tz * textureSize * textureSize) + (ty * textureSize) + tx;
+                cTexData[texIndex] = matId;
             }
         }
     }
@@ -61,6 +68,21 @@ void Chunk::generate(){
         0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, cTexData.data()
     );
     // glTextureSubImage3D(cTexID, 0, 0, 0, 0, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels, GL_RGBA, GL_UNSIGNED_BYTE, cTexData.data());
+}
+
+bool Chunk::isSolidLocal(int xVox, int yVox, int zVox) const
+{
+    const int sideVox = cm.chunkSizeInts * 32;
+    if (xVox < 0 || xVox >= sideVox || yVox < 0 || yVox >= cm.occupancyYsize || zVox < 0 || zVox >= cm.occupancyZsize) {
+        return false;
+    }
+
+    const int xInt = xVox / 32;
+    const int bit = 31 - (xVox % 32);
+    const int yxOffset = cm.occupancyXsize * cm.occupancyYsize;
+    const int occupancyIndex = zVox * yxOffset + yVox * cm.occupancyXsize + xInt;
+    const uint32_t occupancyInt = occupancyInts[occupancyIndex];
+    return ((occupancyInt >> bit) & 1u) != 0u;
 }
 
 // Generate the vertex array, vertex buffer, and color buffer.
@@ -515,51 +537,21 @@ void Chunk::drawMesh(const Program& prog)
 
 
 // Private Methods
-void Chunk::fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z)
+void Chunk::fillTerrain(uint32_t* occupancyInt, int x, int y, int z, const float* heightMap)
 {
-    int bitShifts = 32;
-    for(int shiftN = 0; shiftN < bitShifts; shiftN += cm.voxPerMeter){
-        if (z%cm.voxPerMeter == 0 || y%cm.voxPerMeter == 0){
-            // *occupancyInt |= (0b1 << cm.voxPerMeter*shiftN);
-            *occupancyInt |= (1u << (31-shiftN));
-        }
-        if (y%cm.voxPerMeter == 0 && z%cm.voxPerMeter == 0){
-            *occupancyInt |= 0b11111111111111111111111111111111;
-        }
-    } 
-}
+    const int sideVox = cm.chunkSizeInts * 32;
+    const float worldY = worldcp.y + static_cast<float>(y) * cm.voxSizeMeters;
+    *occupancyInt = 0u;
 
-void Chunk::fillChunkGrid(uint32_t* occupancyInt, int x, int y, int z)
-{
-    // fill lines in the X direction
-    if ((y == 0 || y == cm.occupancyYsize-1) && 
-        (z == 0 || z == cm.occupancyZsize-1)){
-        *occupancyInt |= 0b11111111111111111111111111111111;
-    }
-    // fill wall on the +x Side
-    if ((x == cm.occupancyXsize-1) &&
-             ((y == 0 || y == cm.occupancyYsize-1) ||
-              (z == 0 || z == cm.occupancyZsize-1))){
-         *occupancyInt |= 0b00000000000000000000000000000001;
-    }
-    // fill wall on the -x side
-    if ((x == 0) &&
-             ((y == 0 || y == cm.occupancyYsize-1) ||
-              (z == 0 || z == cm.occupancyZsize-1))){
-         *occupancyInt |= 0b10000000000000000000000000000000;
-    }
-}
+    for (int bit = 0; bit < 32; ++bit) {
+        const int localX = 31 - bit;
+        const int xVox = x * 32 + localX;
+        const float surfaceHeight = heightMap[z * sideVox + xVox];
 
-void Chunk::fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int x, int z)
-{
-    
-    if (voxPosCenter->y <= cm.voxSizeMeters){
-        *occupancyInt |= 0b11111111111111111111111111111111;
+        if (worldY + cm.voxSizeMeters <= surfaceHeight) {
+            *occupancyInt |= (1u << bit);
+        }
     }
-    // random grass stuff
-    // else if (voxPosCenter->y <= cm.voxSizeMeters*3 && z%(x+5) == 0){
-    //     *occupancyInt |= 0b1000000000001000000000001000000 >> (z%5);
-    // }
 }
 
 void Chunk::updateBuffer(){

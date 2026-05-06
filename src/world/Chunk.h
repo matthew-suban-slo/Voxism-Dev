@@ -39,6 +39,7 @@ class Chunk
 
         // Binds Mesh Buffers and Draw.
         void drawMesh(const Program& prog);
+        bool isSolidLocal(int xVox, int yVox, int zVox) const;
 
         // update OccupancyInts
         void updateChunk(float deltaTime, bool gridFill, bool floor, bool sphere);
@@ -52,11 +53,7 @@ class Chunk
         glm::vec3 worldcp;
         std::deque<std::shared_ptr<IChunkModifier>> modifierUpdateQueue;
 
-        // For each voxel in occupancyInts will fill an outlining grid.
-        // Works with verious voxel and chunk sizes.
-        void fillMeterGrid(uint32_t* occupancyInt, int x, int y, int z);
-        void fillChunkGrid(uint32_t* occupancyInt, int x, int y, int z);
-        void fillFloor(uint32_t* occupancyInt, glm::vec3* voxPosCenter, int x, int z);
+        void fillTerrain(uint32_t* occupancyInt, int x, int y, int z, const float* heightMap);
 
         void addGreedyFace(uint32_t* posYMask, int maskIndex, float xPos, float yPos, float zPos, int direction);
         void addExtentQuad(float anchor, float uStart, float vStart, float uExtent, int vExtent, int dir);

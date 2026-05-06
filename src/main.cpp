@@ -155,10 +155,6 @@ public:
 	~Application()
 	{
 		teardownPostProcess();
-		if (groundVao_)
-			glDeleteVertexArrays(1, &groundVao_);
-		if (groundVbo_)
-			glDeleteBuffers(1, &groundVbo_);
 		if (groundTexGl_)
 			glDeleteTextures(1, &groundTexGl_);
 		ImGui_ImplOpenGL3_Shutdown();
@@ -237,8 +233,6 @@ public:
 
 		skybox_.init(resourceDirectory, "sky_equirect.jpg");
 
-		initGroundMesh();
-
 		world_.reset();
 
 		glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 3 * 4096, nullptr, GL_DYNAMIC_DRAW);
@@ -267,6 +261,9 @@ public:
 		crosshair_.setThickness(2.0f);
 		crosshair_.setGap(5.0f);
 		crosshair_.setColor(vec3(1.0f, 1.0f, 1.0f));
+
+		const float spawnY = chunkManager->terrain().heightAt(0.0f, 0.0f) + 2.0f;
+		thirdPersonCam_.SetPlayerPos(glm::vec3(0.0f, spawnY, 0.0f));
 
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
@@ -625,40 +622,6 @@ public:
 		return tex;
 	}
 
-	void initGroundMesh()
-	{
-		const float h = GameWorld::kGridHalf;
-		const float tu = 14.0f;
-		float verts[] = {
-			-h, 0.0f, -h, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-			h, 0.0f, -h, 0.0f, 1.0f, 0.0f, tu, 0.0f,
-			h, 0.0f, h, 0.0f, 1.0f, 0.0f, tu, tu,
-			-h, 0.0f, -h, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-			h, 0.0f, h, 0.0f, 1.0f, 0.0f, tu, tu,
-			-h, 0.0f, h, 0.0f, 1.0f, 0.0f, 0.0f, tu,
-		};
-
-		glGenVertexArrays(1, &groundVao_);
-		glBindVertexArray(groundVao_);
-		glGenBuffers(1, &groundVbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, groundVbo_);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-
-		GLint posLoc = texProg_->getAttribute("vertPos");
-		GLint norLoc = texProg_->getAttribute("vertNor");
-		GLint texLoc = texProg_->getAttribute("vertTex");
-		const GLsizei stride = static_cast<GLsizei>(8 * sizeof(float));
-		glEnableVertexAttribArray(posLoc);
-		glVertexAttribPointer(posLoc, 3, GL_FLOAT, GL_FALSE, stride, (const void *)0);
-		glEnableVertexAttribArray(norLoc);
-		glVertexAttribPointer(norLoc, 3, GL_FLOAT, GL_FALSE, stride, (const void *)(3 * sizeof(float)));
-		glEnableVertexAttribArray(texLoc);
-		glVertexAttribPointer(texLoc, 2, GL_FLOAT, GL_FALSE, stride, (const void *)(6 * sizeof(float)));
-
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		glBindVertexArray(0);
-	}
-
 	void drawFullscreenQuad()
 	{
 		glDisable(GL_DEPTH_TEST);
@@ -844,7 +807,7 @@ public:
 	void updateFixedStep(float dt)
 	{
 		vec3 wish = (static_cast<float>(keyW_) - static_cast<float>(keyS_)) * vec3(1,1,1) + (static_cast<float>(keyD_) - static_cast<float>(keyA_)) * vec3(1,1,1);
-		thirdPersonCam_.UpdateCamera(dt);
+		thirdPersonCam_.UpdateCamera(dt, chunkManager.get());
 		
 		toolView_.update(dt);
 
@@ -879,26 +842,6 @@ public:
 		glUniform3fv(texProg_->getUniform("lightPos"), 1, value_ptr(sunWorld_));
 		glUniform3fv(texProg_->getUniform("camPos"), 1, value_ptr(eye));
 		glUniform3fv(texProg_->getUniform("lightColor"), 1, value_ptr(lightColor));
-
-		// Ground
-		{
-			mat4 M(1.0f);
-			glUniformMatrix4fv(texProg_->getUniform("M"), 1, GL_FALSE, value_ptr(M));
-			glUniform3f(texProg_->getUniform("matAmbient"), 0.08f, 0.1f, 0.07f);
-			glUniform3f(texProg_->getUniform("matDiffuse"), 0.85f, 0.88f, 0.82f);
-			glUniform3f(texProg_->getUniform("matSpecular"), 0.12f, 0.14f, 0.1f);
-			glUniform1f(texProg_->getUniform("shininess"), 10.0f);
-			glUniform3f(texProg_->getUniform("tintColor"), 1.0f, 1.0f, 1.0f);
-			glUniform1f(texProg_->getUniform("emissiveStrength"), 0.0f);
-			glUniform3f(texProg_->getUniform("emissiveColor"), 0.0f, 0.0f, 0.0f);
-			glUniform1i(texProg_->getUniform("useEmissiveMap"), 0);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, groundTexGl_);
-			glUniform1i(texProg_->getUniform("Texture0"), 0);
-			glBindVertexArray(groundVao_);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-			glBindVertexArray(0);
-		}
 
 		texProg_->unbind();
 	}
@@ -1102,15 +1045,14 @@ private:
 	shared_ptr<ChunkManager> chunkManager = make_shared<ChunkManager>(
 	16,// voxPerMeter 
 	16,// chunkSizeMeters
-	32,// renderDistance (in meters)
-	16// renderHeight (int meters)
+    64, // renderDistance (in meters)
+	1,// renderHeight (int meters)
+	-3,// terrainMinChunks
+	2// terrainMaxChunks
 	);
 
 	shared_ptr<Texture> collectibleTex_;
 	GLuint groundTexGl_ = 0;
-
-	GLuint groundVao_ = 0;
-	GLuint groundVbo_ = 0;
 
 	vec3 sunWorld_;
 
