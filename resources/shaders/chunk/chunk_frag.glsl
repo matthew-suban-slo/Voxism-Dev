@@ -1,6 +1,6 @@
 #version 330 core
 // Textures
-uniform sampler3D colorTex;
+uniform usampler3D matIDTex;
 
 // General Chunk Data
 uniform vec3 chunkWorldPos;
@@ -13,7 +13,7 @@ uniform vec3 camPos; // added
 uniform vec3 lightColor; //added
 
 // vertex shader ins.
-flat in vec3 normal;
+flat in uint frag_normalID;
 in vec3 worldPos;
 
 // Material lookup information
@@ -30,13 +30,30 @@ layout(std140) uniform materials {
     Material materialArray[256];
 };
 
+vec3 normalLookup[6] = vec3[](
+    vec3(1.0, 0.0, 0.0),
+    vec3(-1.0, 0.0, 0.0),
+    vec3(0.0, 1.0, 0.0),
+    vec3(0.0, -1.0, 0.0),
+    vec3(0.0, 0.0, 1.0),
+    vec3(0.0, 0.0, -1.0)
+);
+
 out vec4 color;
+
+float rand(float n) {
+    return fract(sin(n) * 43758.5453123);
+}
+float rand(vec3 p) {
+    return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453123);
+}
 
 void main()
 {
+    vec3 normal = normalLookup[frag_normalID];
     // get voxel color.
-    ivec3 localCoord = ivec3(floor((worldPos - chunkWorldPos-normal*0.5*voxelSizeMeters)/(voxelSizeMeters*2)));
-    vec4 voxColor = texelFetch(colorTex, localCoord, 0);
+    ivec3 localCoord = ivec3(floor((worldPos - chunkWorldPos-normal*0.5*voxelSizeMeters*2)/(voxelSizeMeters*2)));
+    uint matID = texelFetch(matIDTex, localCoord, 0).r;
     
     // hard coded until ID lookup can be used.
     //vec3 matSpecular = vec3(0.15);
@@ -44,11 +61,11 @@ void main()
     //vec3 matAmbient = voxColor.rgb*0.08;
     //float shininess = 30;
 
-    Material m = materialArray[0];
-    vec3 matSpecular = m.specular.rgb;
-    vec3 matDiffuse = m.diffuse.rgb;
-    vec3 matAmbient = m.ambient.rgb;
-    float shininess = m.shininess;
+    Material m = materialArray[matID];
+    vec3 matSpecular = m.specular.rgb + (rand(localCoord+1)-0.5)/6;
+    vec3 matDiffuse = m.diffuse.rgb + (rand(localCoord-1)-0.5)/10.0;
+    vec3 matAmbient = m.ambient.rgb + (rand(localCoord)-0.5)/20.0;
+    float shininess = m.shininess + (rand(localCoord+2)-0.5)*10;
 
     // Lighting Equations
     vec3 N = normalize(normal);
@@ -73,11 +90,12 @@ void main()
     }
         
 	vec3 ambient = matAmbient;
-	vec3 diffuse = matDiffuse * lightColor * diff;
-	vec3 specular = matSpecular * lightColor * spec;
+	vec3 diffuse = matDiffuse * normalize(lightColor) * diff;
+	vec3 specular = matSpecular * normalize(lightColor) * spec;
     
     vec3 rgb = ambient + diffuse + specular;
     color = vec4(rgb, 1.0);
+    //color = vec4(matDiffuse, 1.0);
     
     //color = vec4(vec3(spec), 1.0);
     //color = texelFetch(colorTex, localCoord, 0);

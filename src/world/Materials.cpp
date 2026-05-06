@@ -17,17 +17,17 @@ void Materials::init(GLuint bindingPoint){
     };
     // basic grass
     addMaterial(
-        glm::vec4(0.04, 0.2, 0.08, 1.0), // amb
-        glm::vec4(0.2, 1.0, 0.4, 1.0), // diff
-        glm::vec4(0.9, 1.0, 0.9, 1.0), // spec
-        15 // shine
+        glm::vec4(0.03, 0.14, 0.04, 1.0), // ambient (dark green)
+        glm::vec4(0.1, 0.3, 0.1, 1.0), // diffuse (rich green)
+        glm::vec4(0.24, 0.41, 0.24, 1.0), // specular (very subtle, slightly green)
+        15.0f // shininess (broad highlight)
     );
     // basic Stone
     addMaterial(
-        glm::vec4(0.1, 0.1, 0.1, 1.0), // amb
-        glm::vec4(0.6, 0.6, 0.6, 1.0), // diff
-        glm::vec4(0.8, 0.8, 0.8, 1.0), // spec
-        6 // shine
+        glm::vec4(0.05, 0.05, 0.05, 1.0), // amb
+        glm::vec4(0.2, 0.2, 0.3, 1.0), // diff
+        glm::vec4(0.05, 0.05, 0.05, 1.0), // spec
+        3 // shine
     );
 
     

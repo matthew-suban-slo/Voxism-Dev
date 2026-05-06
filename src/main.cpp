@@ -200,12 +200,12 @@ public:
 		chunkProg_->addUniform("chunkSizeMeters");
 		chunkProg_->addUniform("voxelSizeMeters");
 		chunkProg_->addUniformBuffObj("materials", materialsBindingPoint);
-		chunkProg_->addUniform("colorTex");
+		chunkProg_->addUniform("matIDTex");
 		chunkProg_->addUniform("lightPos");
 		chunkProg_->addUniform("camPos");
 		chunkProg_->addUniform("lightColor");
 		chunkProg_->addAttribute("vertPos");
-		chunkProg_->addAttribute("vertNormal");
+		chunkProg_->addAttribute("normalID");
 
 		// Lit texture pass (world-space Blinn-Phong, 471-style texture sampling)
 		texProg_ = make_shared<Program>();
