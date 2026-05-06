@@ -16,26 +16,47 @@ uniform vec3 lightColor; //added
 flat in vec3 normal;
 in vec3 worldPos;
 
+// Material lookup information
+// pads to next 16 bytes
+// vec4 16 bytes, float 8 bytes, so each Material is 64 bytes
+struct Material {
+    vec4 ambient;
+    vec4 diffuse;
+    vec4 specular;
+    float shininess;
+};
+
+layout(std140) uniform materials {
+    Material materialArray[256];
+};
+
 out vec4 color;
 
 void main()
 {
     // get voxel color.
-    ivec3 localCoord = ivec3(floor((worldPos - chunkWorldPos-normal*0.5*voxelSizeMeters)/voxelSizeMeters));
+    ivec3 localCoord = ivec3(floor((worldPos - chunkWorldPos-normal*0.5*voxelSizeMeters)/(voxelSizeMeters*2)));
     vec4 voxColor = texelFetch(colorTex, localCoord, 0);
     
     // hard coded until ID lookup can be used.
-    //vec3 matSpecular = clamp(voxColor.rgb + 0.5, 0.0, 1.0);
-    vec3 matSpecular = vec3(0.15);
-    vec3 matDiffuse = voxColor.rgb*1.0;
-    vec3 matAmbient = voxColor.rgb*0.08;
-    float shininess = 30;
+    //vec3 matSpecular = vec3(0.15);
+    //vec3 matDiffuse = voxColor.rgb*1.0;
+    //vec3 matAmbient = voxColor.rgb*0.08;
+    //float shininess = 30;
+
+    Material m = materialArray[0];
+    vec3 matSpecular = m.specular.rgb;
+    vec3 matDiffuse = m.diffuse.rgb;
+    vec3 matAmbient = m.ambient.rgb;
+    float shininess = m.shininess;
 
     // Lighting Equations
     vec3 N = normalize(normal);
     //used to calculate the blinn-phong color per voxel.
+    //vec3 voxelPos = worldPos;
     vec3 voxelPos = (floor(worldPos/voxelSizeMeters))*voxelSizeMeters+0.5*voxelSizeMeters;
     //vec3 voxelPos = (floor(worldPos/(voxelSizeMeters*2)))*(voxelSizeMeters*2)+0.5*(voxelSizeMeters*2); //lighting 2x voxel size.
+    
 	vec3 L = normalize(lightPos- voxelPos);
 	vec3 Vdir = normalize(camPos - voxelPos);
     //used to calculate the blinn-phong color normally

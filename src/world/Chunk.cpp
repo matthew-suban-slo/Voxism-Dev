@@ -18,9 +18,9 @@ Chunk::Chunk(ChunkManager& cm, ChunkPos& cp):
 
 void Chunk::generate(){
     // Color Things
-    int chunkSizeVoxels= cm.chunkSizeInts*32;
-    float colorScale = 255.0f / (chunkSizeVoxels - 1);
-    cTexData = std::vector<uint8_t>(4*chunkSizeVoxels*chunkSizeVoxels*chunkSizeVoxels);
+    int textureSize = cm.chunkSizeInts*16;
+    float colorScale = 255.0f / (textureSize - 1);
+    cTexData = std::vector<uint8_t>(4*textureSize*textureSize*textureSize);
     uint8_t* ptr = cTexData.data();
     
 
@@ -44,7 +44,8 @@ void Chunk::generate(){
                 fillMeterGrid(&occupancyInt, x, y, z);
 
                 // Fill color data
-                for (int bit=0; bit<32; bit++){
+                if (y%2 == 0 && z%2 == 0)
+                for (int bit=0; bit<32; bit+=2){
                     *ptr++ = (32*x+bit) * colorScale;
                     *ptr++ = y * colorScale;
                     *ptr++ = z * colorScale;
@@ -54,7 +55,7 @@ void Chunk::generate(){
         }
     }
 
-    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels,
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, textureSize, textureSize, textureSize,
         0, GL_RGBA, GL_UNSIGNED_BYTE, cTexData.data()
     );
     // glTextureSubImage3D(cTexID, 0, 0, 0, 0, chunkSizeVoxels, chunkSizeVoxels, chunkSizeVoxels, GL_RGBA, GL_UNSIGNED_BYTE, cTexData.data());
@@ -116,15 +117,15 @@ void Chunk::bindMesh()
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    int chunkSizeVoxels = cm.chunkSizeInts * 32;
+    int textureSize = cm.chunkSizeInts*16;
     // Allocate immutable storage is NOT core in 4.1, so use glTexImage3D
     glTexImage3D(
         GL_TEXTURE_3D,
         0,                  // mip level
         GL_RGBA8,           // internal format
-        chunkSizeVoxels,
-        chunkSizeVoxels,
-        chunkSizeVoxels,
+        textureSize,
+        textureSize,
+        textureSize,
         0,                  // border (must be 0)
         GL_RGBA,            // format
         GL_UNSIGNED_BYTE,   // type

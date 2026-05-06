@@ -27,6 +27,7 @@
 #include "Texture.h"
 #include "WindowManager.h"
 #include "world/ChunkManager.h"
+#include "world/Materials.h"
 #include "Tool.h"
 #include "Crosshair.h"
 #include <imgui.h>
@@ -178,6 +179,11 @@ public:
 
 		sunWorld_ = vec3(12.0f, 30.0f, 20.0f);
 
+
+		// Materials initialization
+		GLuint materialsBindingPoint = 0;
+		materials->init(materialsBindingPoint);
+
 		// ChunkProg definition
 		chunkProg_ = make_shared<Program>();
 		chunkProg_->setVerbose(true);
@@ -193,6 +199,7 @@ public:
 		chunkProg_->addUniform("chunkWorldPos");
 		chunkProg_->addUniform("chunkSizeMeters");
 		chunkProg_->addUniform("voxelSizeMeters");
+		chunkProg_->addUniformBuffObj("materials", materialsBindingPoint);
 		chunkProg_->addUniform("colorTex");
 		chunkProg_->addUniform("lightPos");
 		chunkProg_->addUniform("camPos");
@@ -1091,10 +1098,11 @@ private:
 	shared_ptr<Program> chunkProg_;
 	shared_ptr<Program> ssaoProg_;
 	shared_ptr<Program> ssaoBlurProg_;
+	shared_ptr<Materials> materials = make_shared<Materials>();
 	shared_ptr<ChunkManager> chunkManager = make_shared<ChunkManager>(
 	16,// voxPerMeter 
 	16,// chunkSizeMeters
-	16,// renderDistance (in meters)
+	32,// renderDistance (in meters)
 	16// renderHeight (int meters)
 	);
 
