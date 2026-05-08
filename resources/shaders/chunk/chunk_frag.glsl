@@ -50,25 +50,30 @@ float rand(vec3 p) {
 
 void main()
 {
+    //get normal vector
     vec3 normal = normalLookup[frag_normalID];
+    //get coordinate of one voxel.
+    ivec3 localCoord= ivec3(((((worldPos-chunkWorldPos)/(voxelSizeMeters))-normal*0.5)));
+    //snap voxel coordinate to the 2x2 grid.
+    ivec3 textureCoord = ivec3((localCoord/2));
 
-    // m / m per v
-    ivec3 localCoord = ivec3(((((worldPos-chunkWorldPos)/(voxelSizeMeters))-normal*0.5)));
-    ivec3 textureCoord = ivec3(((((worldPos-chunkWorldPos)/(voxelSizeMeters*2+0.001))-normal*0.5)-0.5*voxelSizeMeters));
+    //ivec3 localCoord = ivec3(((((worldPos-chunkWorldPos)/(voxelSizeMeters))-normal*0.5)));
+    //ivec3 textureCoord = ivec3(((((worldPos-chunkWorldPos)/(voxelSizeMeters*2+0.001))-normal*0.5)-0.5*voxelSizeMeters));
+    
+    
+    //get material information for 2x2x2 area.
     uint matID = texelFetch(matIDTex, textureCoord, 0).x;
-    
-    
-    // hard coded until ID lookup can be used.
-    //vec3 matSpecular = vec3(0.15);
-    //vec3 matDiffuse = voxColor.rgb*1.0;
-    //vec3 matAmbient = voxColor.rgb*0.08;
-    //float shininess = 30;
-
     Material m = materialArray[matID];
-    vec3 matSpecular = m.specular.rgb + (rand(localCoord+1)-0.5)/6;
-    vec3 matDiffuse = m.diffuse.rgb + (rand(localCoord-1)-0.5)/10.0;
-    vec3 matAmbient = m.ambient.rgb + (rand(localCoord)-0.5)/20.0;
-    float shininess = m.shininess + (rand(localCoord+2)-0.5)*10;
+    //vec3 matSpecular = m.specular.rgb + (rand(localCoord+1)-0.5)/6;
+    //vec3 matDiffuse = m.diffuse.rgb + (rand(localCoord-1)-0.5)/10.0;
+    //vec3 matAmbient = m.ambient.rgb + (rand(localCoord)-0.5)/20.0;
+    //float shininess = m.shininess + (rand(localCoord+2)-0.5)*10;
+
+    float random = rand(localCoord)-0.5;
+    vec3 matSpecular = m.specular.rgb+0.2+random/10.0;
+    vec3 matDiffuse = m.diffuse.rgb+random/20.0;
+    vec3 matAmbient = m.ambient.rgb+random/20.0;
+    float shininess = m.shininess+10;
 
     // Lighting Equations
     vec3 N = normalize(normal);

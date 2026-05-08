@@ -72,7 +72,7 @@ void Chunk::generate(){
                             texX;
     
                         // cTexData[texIndex] =
-                            // (y == 0) ? 0u : 1u;
+                        //     (y == 0) ? 0u : 1u;
                         if (change%2==0){
                             cTexData[texIndex] = 0u;
                         } else {
