@@ -88,7 +88,7 @@ class Chunk
         std::vector<unsigned int> eBuff; // element buffer.
 
         GLuint nBuffID; // normal buffer ID.
-        std::vector<GLfloat>nBuff; // normal buffer.
+        std::vector<uint32_t>nBuff; // normal buffer.
 
         GLuint cTexID;
         std::vector<uint8_t> cTexData;

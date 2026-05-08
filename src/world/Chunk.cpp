@@ -71,14 +71,14 @@ void Chunk::generate(){
                             texY * textureSize +
                             texX;
     
-                        // cTexData[texIndex] =
-                        //     (y == 0) ? 0u : 1u;
-                        if (change%2==0){
-                            cTexData[texIndex] = 0u;
-                        } else {
-                            cTexData[texIndex] = 1u;
-                        }
-                        change++;
+                        cTexData[texIndex] =
+                            (y == 0) ? 0u : 1u;
+                        // if (change%2==0){
+                        //     cTexData[texIndex] = 0u;
+                        // } else {
+                        //     cTexData[texIndex] = 1u;
+                        // }
+                        // change++;
                     }
                 }
             }
