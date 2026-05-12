@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12)
 include("${CMAKE_SOURCE_DIR}/FindGfxLibs.cmake")
 
 # Name of the project
-project(ASimpleGame)
+project(Voxism)
 
 # ---------------------------------------------------------------------------
 # Unit / property tests (no OpenGL context required — compile standalone)
