@@ -29,6 +29,20 @@ void Materials::init(GLuint bindingPoint){
         glm::vec4(0.05, 0.05, 0.05, 1.0), // spec
         3 // shine
     );
+    // brick
+    addMaterial(
+        glm::vec4(0.16f, 0.03f, 0.03f, 1.0f),
+        glm::vec4(0.62f, 0.18f, 0.16f, 1.0f),
+        glm::vec4(0.18f, 0.08f, 0.08f, 1.0f),
+        8.0f
+    );
+    // sand
+    addMaterial(
+        glm::vec4(0.18f, 0.15f, 0.08f, 1.0f),
+        glm::vec4(0.72f, 0.63f, 0.30f, 1.0f),
+        glm::vec4(0.22f, 0.20f, 0.12f, 1.0f),
+        10.0f
+    );
 
     
     
@@ -44,4 +58,19 @@ void Materials::init(GLuint bindingPoint){
 // typically a set once and forget.
 void Materials::bind(){
     glBindBufferBase(GL_UNIFORM_BUFFER, bindingPoint, matBuffID);
+}
+
+const char *Materials::paletteName(int index)
+{
+    static const char *kNames[] = {
+        "Grass",
+        "Stone",
+        "Brick Red",
+        "Sand"
+    };
+
+    if (index < 0 || index >= paletteCount) {
+        return "Unknown";
+    }
+    return kNames[index];
 }
