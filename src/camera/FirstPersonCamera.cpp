@@ -1,5 +1,7 @@
 #include "FirstPersonCamera.h"
 
+#include "../world/ChunkManager.h"
+
 #include <algorithm>
 #include <cmath>
 #include <GLFW/glfw3.h>
@@ -8,6 +10,7 @@ FirstPersonCamera::FirstPersonCamera() {
     player_pos = glm::vec3(0.0f, 1.0f, 0.0f);
     cam_pos = glm::vec3(0.0f, 1.0f, 0.0f);
     look_at = glm::vec3(0.0f, 1.0f, -1.0f);
+    airborne_peak_y = player_pos.y;
 
     yaw = -90.0f;
     pitch = 0.0f;
@@ -21,6 +24,7 @@ FirstPersonCamera::FirstPersonCamera(glm::vec3 initial_pos, glm::vec3 look_at_, 
     cam_pos = initial_pos;
     look_at = look_at_;
     height = height_;
+    airborne_peak_y = player_pos.y;
 
     glm::vec3 dir = glm::normalize(look_at - cam_pos);
 
@@ -29,6 +33,12 @@ FirstPersonCamera::FirstPersonCamera(glm::vec3 initial_pos, glm::vec3 look_at_, 
     fov = base_fov;
 
     SetBasisVectors();
+}
+
+void FirstPersonCamera::SetChunkManager(ChunkManager *chunk_manager)
+{
+    chunk_manager_ = chunk_manager;
+    NudgeOutOfCollision();
 }
 
 void FirstPersonCamera::ProcessMouseMovement(double dx, double dy) {
@@ -94,6 +104,16 @@ glm::mat4 FirstPersonCamera::GetViewMatrix() const {
 }
 
 void FirstPersonCamera::UpdateCamera(float dt) {
+    if (chunk_manager_ && CollidesAt(player_pos)) {
+        NudgeOutOfCollision();
+    }
+
+    if (is_grounded) {
+        airborne_peak_y = player_pos.y;
+    } else {
+        airborne_peak_y = std::max(airborne_peak_y, player_pos.y);
+    }
+
     if (key_yaw_left) {
         yaw -= rot_sensitivity_key;
     }
@@ -121,23 +141,25 @@ void FirstPersonCamera::UpdateCamera(float dt) {
     bool is_moving = false;
     float target_fov = base_fov;
 
+    glm::vec3 desired_move(0.0f);
+
     if (key_left) {
-        player_pos -= trans_speed * right;
+        desired_move -= trans_speed * right;
         is_moving = true;
         roll_target -= max_roll;
     }
     if (key_right) {
-        player_pos += trans_speed * right;
+        desired_move += trans_speed * right;
         is_moving = true;
         roll_target += max_roll;
     }
     if (key_forward) {
-        player_pos += trans_speed * flat_forward;
+        desired_move += trans_speed * flat_forward;
         is_moving = true;
         target_fov = move_fov;
     }
     if (key_backward) {
-        player_pos -= trans_speed * flat_forward;
+        desired_move -= trans_speed * flat_forward;
         is_moving = true;
         target_fov = move_back_fov;
     }
@@ -156,14 +178,43 @@ void FirstPersonCamera::UpdateCamera(float dt) {
     }
 
     vertical_velocity -= gravity * dt;
-    player_pos.y += vertical_velocity * dt;
+    if (chunk_manager_) {
+        desired_move.y = vertical_velocity * dt;
 
-    if (player_pos.y <= floor_height + height) {
-        player_pos.y = floor_height + height;
-        vertical_velocity = 0.0f;
-        is_grounded = true;
-    } else {
         is_grounded = false;
+        const bool hit_y = ResolveAxisMove(1, desired_move.y);
+        if (hit_y) {
+            if (vertical_velocity <= 0.0f) {
+                is_grounded = true;
+            }
+            vertical_velocity = 0.0f;
+        }
+
+        ResolveAxisMove(0, desired_move.x);
+        ResolveAxisMove(2, desired_move.z);
+
+        if (!is_grounded && vertical_velocity <= 0.0f) {
+            is_grounded = ProbeGrounded();
+        }
+    } else {
+        player_pos += desired_move;
+        player_pos.y += vertical_velocity * dt;
+
+        if (player_pos.y <= floor_height + height) {
+            player_pos.y = floor_height + height;
+            vertical_velocity = 0.0f;
+            is_grounded = true;
+        } else {
+            is_grounded = false;
+        }
+    }
+
+    if (chunk_manager_ && CollidesAt(player_pos)) {
+        NudgeOutOfCollision();
+        is_grounded = ProbeGrounded();
+        if (is_grounded && vertical_velocity < 0.0f) {
+            vertical_velocity = 0.0f;
+        }
     }
 
     if (is_moving && is_grounded) {
@@ -177,10 +228,20 @@ void FirstPersonCamera::UpdateCamera(float dt) {
     bob_offset.y = std::abs(sin(bob_time)) * bob_amount_y * bob_weight;
     bob_offset.x = sin(bob_time * 0.5f) * bob_amount_x * bob_weight;
 
+    step_up_visual_offset += (0.0f - step_up_visual_offset) * std::min(1.0f, dt * step_up_lerp_speed);
+
     cam_pos = player_pos + bob_offset;
+    cam_pos.y += step_up_visual_offset;
 
     if (!was_grounded && is_grounded) {
-        landing_velocity = -landing_dip_amount;
+        const float fall_height = std::max(0.0f, airborne_peak_y - player_pos.y);
+        if (fall_height >= min_landing_dip_fall_height) {
+            const float landing_impulse = std::min(
+                max_landing_dip_velocity,
+                landing_dip_amount + fall_height * landing_dip_per_meter);
+            landing_velocity = -landing_impulse;
+        }
+        airborne_peak_y = player_pos.y;
     }
 
     landing_velocity += (0.0f - landing_offset) * landing_spring_strength * dt;
@@ -195,12 +256,182 @@ void FirstPersonCamera::UpdateCamera(float dt) {
 
 void FirstPersonCamera::SetPlayerPos(glm::vec3 new_pos) {
     player_pos = new_pos;
+    NudgeOutOfCollision();
+    step_up_visual_offset = 0.0f;
+    airborne_peak_y = player_pos.y;
     cam_pos = player_pos;
     look_at = cam_pos + forward;
 }
 
 void FirstPersonCamera::UpdatePlayerPos(glm::vec3 delta_pos) {
     player_pos += delta_pos;
+    NudgeOutOfCollision();
+    step_up_visual_offset = 0.0f;
+    airborne_peak_y = player_pos.y;
+    cam_pos = player_pos;
+    look_at = cam_pos + forward;
+}
+
+bool FirstPersonCamera::CollidesAt(glm::vec3 eye_pos) const
+{
+    if (!chunk_manager_) {
+        return false;
+    }
+
+    const float eps = 0.0001f;
+    const glm::vec3 aabb_min(
+        eye_pos.x - player_half_width,
+        eye_pos.y - height,
+        eye_pos.z - player_half_width);
+    const glm::vec3 aabb_max(
+        eye_pos.x + player_half_width,
+        eye_pos.y - eps,
+        eye_pos.z + player_half_width);
+
+    const glm::ivec3 min_voxel = chunk_manager_->worldToVoxel(aabb_min);
+    const glm::ivec3 max_voxel = chunk_manager_->worldToVoxel(aabb_max);
+
+    for (int z = min_voxel.z; z <= max_voxel.z; z++) {
+        for (int y = min_voxel.y; y <= max_voxel.y; y++) {
+            for (int x = min_voxel.x; x <= max_voxel.x; x++) {
+                if (chunk_manager_->isVoxelOccupied(glm::ivec3(x, y, z))) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+bool FirstPersonCamera::ResolveAxisMove(int axis, float delta)
+{
+    if (!chunk_manager_ || std::abs(delta) <= 0.0001f) {
+        return false;
+    }
+
+    const float voxel_step = std::max(0.01f, chunk_manager_->voxSizeMeters * 0.5f);
+    float remaining = delta;
+    bool collided = false;
+
+    while (std::abs(remaining) > 0.0001f) {
+        const float step = glm::clamp(remaining, -voxel_step, voxel_step);
+        glm::vec3 candidate = player_pos;
+        candidate[axis] += step;
+
+        if (CollidesAt(candidate)) {
+            if ((axis == 0 || axis == 2) && TryStepUpAxisMove(axis, step)) {
+                remaining -= step;
+                continue;
+            }
+
+            float low = 0.0f;
+            float high = step;
+            for (int i = 0; i < 6; i++) {
+                const float mid = 0.5f * (low + high);
+                glm::vec3 probe = player_pos;
+                probe[axis] += mid;
+                if (CollidesAt(probe)) {
+                    high = mid;
+                } else {
+                    low = mid;
+                }
+            }
+
+            player_pos[axis] += low;
+            collided = true;
+            break;
+        }
+
+        player_pos = candidate;
+        remaining -= step;
+    }
+
+    return collided;
+}
+
+bool FirstPersonCamera::TryStepUpAxisMove(int axis, float delta)
+{
+    if (!chunk_manager_ || (axis != 0 && axis != 2)) {
+        return false;
+    }
+    if (delta == 0.0f) {
+        return false;
+    }
+    if (vertical_velocity > 0.0f) {
+        return false;
+    }
+
+    const bool grounded_for_step = is_grounded || ProbeGrounded();
+    if (!grounded_for_step) {
+        return false;
+    }
+
+    const float max_step_height = chunk_manager_->voxSizeMeters * 2.0f;
+    const float probe_step = std::max(0.01f, chunk_manager_->voxSizeMeters * 0.25f);
+
+    for (float lift = probe_step; lift <= max_step_height + 0.0001f; lift += probe_step) {
+        glm::vec3 lifted = player_pos;
+        lifted.y += lift;
+        if (CollidesAt(lifted)) {
+            continue;
+        }
+
+        glm::vec3 stepped = lifted;
+        stepped[axis] += delta;
+        if (CollidesAt(stepped)) {
+            continue;
+        }
+
+        glm::vec3 settled = stepped;
+        float drop = 0.0f;
+        while (drop + probe_step <= lift + 0.0001f) {
+            glm::vec3 probe = settled;
+            probe.y -= probe_step;
+            if (CollidesAt(probe)) {
+                break;
+            }
+            settled = probe;
+            drop += probe_step;
+        }
+
+        const float previous_visible_y = player_pos.y + step_up_visual_offset;
+        player_pos = settled;
+        if (player_pos.y > previous_visible_y) {
+            step_up_visual_offset = previous_visible_y - player_pos.y;
+        }
+        is_grounded = true;
+        if (vertical_velocity < 0.0f) {
+            vertical_velocity = 0.0f;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+bool FirstPersonCamera::ProbeGrounded() const
+{
+    if (!chunk_manager_) {
+        return player_pos.y <= floor_height + height + 0.001f;
+    }
+
+    const float probe_distance = std::max(0.01f, chunk_manager_->voxSizeMeters * 0.5f);
+    glm::vec3 probe_pos = player_pos;
+    probe_pos.y -= probe_distance;
+    return CollidesAt(probe_pos);
+}
+
+void FirstPersonCamera::NudgeOutOfCollision()
+{
+    if (!chunk_manager_ || !CollidesAt(player_pos)) {
+        return;
+    }
+
+    const float lift = std::max(0.05f, chunk_manager_->voxSizeMeters);
+    for (int i = 0; i < 256 && CollidesAt(player_pos); i++) {
+        player_pos.y += lift;
+    }
     cam_pos = player_pos;
     look_at = cam_pos + forward;
 }

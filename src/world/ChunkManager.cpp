@@ -85,17 +85,13 @@ std::shared_ptr<Chunk> ChunkManager::generateChunk(ChunkPos& chunkPos){
     return newChunk; 
 }
 
-std::shared_ptr<Chunk> ChunkManager::getOrCreateChunk(const ChunkPos &chunkPos)
+std::shared_ptr<Chunk> ChunkManager::getChunk(const ChunkPos &chunkPos) const
 {
     auto it = chunkMap.find(chunkPos);
     if (it != chunkMap.end()) {
         return it->second;
     }
-
-    ChunkPos mutablePos = chunkPos;
-    auto newChunk = generateChunk(mutablePos);
-    chunkMap[chunkPos] = newChunk;
-    return newChunk;
+    return nullptr;
 }
 
 void ChunkManager::queueOccupancyUpdate(const std::shared_ptr<Chunk> &chunk)
@@ -119,7 +115,10 @@ void ChunkManager::queueMeshUpdate(const std::shared_ptr<Chunk> &chunk)
 bool ChunkManager::isVoxelOccupied(const glm::ivec3 &voxel)
 {
     const ChunkPos chunkPos = getChunkPosForVoxel(voxel);
-    auto chunk = getOrCreateChunk(chunkPos);
+    auto chunk = getChunk(chunkPos);
+    if (!chunk) {
+        return false;
+    }
     const glm::ivec3 local = worldToLocalVoxel(voxel);
     return chunk->isOccupiedLocal(local.x, local.y, local.z);
 }
@@ -216,7 +215,10 @@ void ChunkManager::modifyChunks(const std::shared_ptr<IChunkModifier> &chunkMod)
                     continue;
                 }
 
-                auto chunk = getOrCreateChunk(chunkPos);
+                auto chunk = getChunk(chunkPos);
+                if (!chunk) {
+                    continue;
+                }
                 chunk->queueModifier(chunkMod);
                 queueOccupancyUpdate(chunk);
 
@@ -230,7 +232,7 @@ void ChunkManager::modifyChunks(const std::shared_ptr<IChunkModifier> &chunkMod)
                         } else {
                             neighborPos.z += dir;
                         }
-                        auto neighbor = getOrCreateChunk(neighborPos);
+                        auto neighbor = getChunk(neighborPos);
                         queueMeshUpdate(neighbor);
                     }
                 }
