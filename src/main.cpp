@@ -237,6 +237,7 @@ public:
 		skybox_.init(resourceDirectory, "sky_equirect.jpg");
 
 		world_.reset();
+		fpvCamera.SetChunkManager(chunkManager.get());
 
 		glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 3 * 4096, nullptr, GL_DYNAMIC_DRAW);
 		glEnableVertexAttribArray(0);

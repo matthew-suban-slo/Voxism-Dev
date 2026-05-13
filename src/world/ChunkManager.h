@@ -45,7 +45,7 @@ class ChunkManager {
             VoxelRaycastHit &outHit);
 
         std::shared_ptr<Chunk> generateChunk(ChunkPos& chunkPos);
-        std::shared_ptr<Chunk> getOrCreateChunk(const ChunkPos &chunkPos);
+        std::shared_ptr<Chunk> getChunk(const ChunkPos &chunkPos) const;
         const TerrainGenerator& terrain() const { return *terrainGenerator; }
 
         // Modify chunk is given the modifier that is then parsed and attached to the chunks it effects.

@@ -5,10 +5,13 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+class ChunkManager;
+
 class FirstPersonCamera : public Camera {
 public:
     FirstPersonCamera();
     FirstPersonCamera(glm::vec3 initial_pos, glm::vec3 look_at, float height);
+    void SetChunkManager(ChunkManager *chunk_manager);
 
     void ProcessMouseMovement(double dx, double dy) override;
     void ProcessScroll(double dy) override;
@@ -34,16 +37,27 @@ public:
     glm::vec3 GetUp() const {return up;}
 
 private:
+    struct MoveIntent {
+        glm::vec3 delta = glm::vec3(0.0f);
+        bool is_moving = false;
+        bool moving_forward = false;
+        bool moving_backward = false;
+    };
+
+    static constexpr float kCollisionEpsilon = 0.0001f;
+
     float height = 1.5f;
     float floor_height = 0.0f;
+    float player_half_width = 0.3f;
 
     glm::vec3 player_pos;
     glm::vec3 look_at;
+    ChunkManager *chunk_manager_ = nullptr;
 
     float roll = 0.0f;
 
-    const float trans_sensitivity = 10.0f;
-    const float sprint_multiple = 1.5f;
+    const float trans_sensitivity = 4.0f;
+    const float sprint_multiple = 2.0f;
     const float rot_sensitivity = 0.5f;
     const float rot_sensitivity_key = 2.0f;
 
@@ -61,8 +75,8 @@ private:
     // view bobbing
     float bob_time = 0.0f;
     const float bob_speed = 10.0f;
-    const float bob_amount_y = 0.05f;
-    const float bob_amount_x = 0.02f;
+    const float bob_amount_y = 0.1f;
+    const float bob_amount_x = 0.04f;
     float bob_weight = 0.0f;
     const float bob_fade_speed = 8.0f;
 
@@ -79,6 +93,14 @@ private:
     float landing_spring_strength = 75.0f;
     float landing_recover_speed = 12.0f;
     bool was_grounded = false;
+    float airborne_peak_y = 0.0f;
+    float landing_dip_per_meter = 1.2f;
+    float max_landing_dip_velocity = 20.0f;
+    float min_landing_dip_fall_height = 0.75f;
+
+    // smooth visual rise for auto-step
+    float step_up_visual_offset = 0.0f;
+    float step_up_lerp_speed = 8.0f;
 
     // roll on strafe
     float roll_target = 0.0f;
@@ -91,4 +113,28 @@ private:
     const float move_back_fov = 57.0f;
     const float sprint_fov = 72.0f;
     const float fov_lerp_speed = 8.0f;
+
+    bool CollidesAt(glm::vec3 eye_pos) const;
+    bool ResolveAxisMove(int axis, float delta);
+    bool ProbeGrounded() const;
+    bool TryStepUpAxisMove(int axis, float delta);
+    void NudgeOutOfCollision();
+    bool CanAttemptStepUp(int axis, float delta) const;
+    bool FindStepDestination(int axis, float delta, float probe_step, float max_step_height, glm::vec3 &settled_pos) const;
+    glm::vec3 SettleStepDown(glm::vec3 stepped_pos, float lift, float probe_step) const;
+    float ResolveCollidingStep(int axis, float step) const;
+    void ApplyKeyboardLook();
+    void UpdateAirbornePeak();
+    MoveIntent BuildMoveIntent(float dt);
+    void UpdateJumpAndVerticalVelocity(float dt);
+    void ApplyMovement(MoveIntent &move, float dt);
+    void ApplyChunkMovement(MoveIntent &move, float dt);
+    void ApplyFallbackMovement(const MoveIntent &move, float dt);
+    void ResolvePostMoveCollision();
+    void UpdateBobbing(float dt, bool is_moving);
+    glm::vec3 ComputeBobOffset() const;
+    void UpdateLandingDip(float dt);
+    void UpdateCameraPose(float dt);
+    void UpdateFovAndRoll(float dt, bool moving_forward, bool moving_backward);
+    void SyncViewToPlayer(bool reset_step_offset);
 };
