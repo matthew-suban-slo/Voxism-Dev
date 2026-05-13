@@ -37,6 +37,15 @@ public:
     glm::vec3 GetUp() const {return up;}
 
 private:
+    struct MoveIntent {
+        glm::vec3 delta = glm::vec3(0.0f);
+        bool is_moving = false;
+        bool moving_forward = false;
+        bool moving_backward = false;
+    };
+
+    static constexpr float kCollisionEpsilon = 0.0001f;
+
     float height = 1.5f;
     float floor_height = 0.0f;
     float player_half_width = 0.3f;
@@ -110,4 +119,22 @@ private:
     bool ProbeGrounded() const;
     bool TryStepUpAxisMove(int axis, float delta);
     void NudgeOutOfCollision();
+    bool CanAttemptStepUp(int axis, float delta) const;
+    bool FindStepDestination(int axis, float delta, float probe_step, float max_step_height, glm::vec3 &settled_pos) const;
+    glm::vec3 SettleStepDown(glm::vec3 stepped_pos, float lift, float probe_step) const;
+    float ResolveCollidingStep(int axis, float step) const;
+    void ApplyKeyboardLook();
+    void UpdateAirbornePeak();
+    MoveIntent BuildMoveIntent(float dt);
+    void UpdateJumpAndVerticalVelocity(float dt);
+    void ApplyMovement(MoveIntent &move, float dt);
+    void ApplyChunkMovement(MoveIntent &move, float dt);
+    void ApplyFallbackMovement(const MoveIntent &move, float dt);
+    void ResolvePostMoveCollision();
+    void UpdateBobbing(float dt, bool is_moving);
+    glm::vec3 ComputeBobOffset() const;
+    void UpdateLandingDip(float dt);
+    void UpdateCameraPose(float dt);
+    void UpdateFovAndRoll(float dt, bool moving_forward, bool moving_backward);
+    void SyncViewToPlayer(bool reset_step_offset);
 };
