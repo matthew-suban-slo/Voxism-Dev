@@ -20,6 +20,7 @@ private:
     float amplitude_;
     float invWavelength_;
     float topSoilDepth_;
+    float subSoilDepth_;
     int octaves_;
     float lacunarity_;
     float persistence_;

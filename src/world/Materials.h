@@ -25,9 +25,10 @@ class Materials {
             Grass = 0,
             Stone = 1,
             Brick = 2,
-            Sand = 3
+            Sand = 3,
+            Dirt = 4
         };
-        const static int paletteCount = 4;
+        const static int paletteCount = 5;
 
         Materials();
 

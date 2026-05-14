@@ -22,12 +22,12 @@ void Materials::init(GLuint bindingPoint){
         glm::vec4(0.24, 0.41, 0.24, 1.0), // specular (very subtle, slightly green)
         15.0f // shininess (broad highlight)
     );
-    // basic Stone
+    // basic Stone (gray)
     addMaterial(
-        glm::vec4(0.05, 0.05, 0.05, 1.0), // amb
-        glm::vec4(0.2, 0.2, 0.3, 1.0), // diff
-        glm::vec4(0.05, 0.05, 0.05, 1.0), // spec
-        3 // shine
+        glm::vec4(0.10f, 0.10f, 0.10f, 1.0f),  // amb
+        glm::vec4(0.55f, 0.55f, 0.55f, 1.0f),  // diff (medium gray)
+        glm::vec4(0.18f, 0.18f, 0.18f, 1.0f),  // spec
+        4.0f                                    // shine
     );
     // brick
     addMaterial(
@@ -42,6 +42,14 @@ void Materials::init(GLuint bindingPoint){
         glm::vec4(0.72f, 0.63f, 0.30f, 1.0f),
         glm::vec4(0.22f, 0.20f, 0.12f, 1.0f),
         10.0f
+    );
+    // dirt — uses the muted brownish colors that "Stone" used to have, since
+    // that's what the worldgen subsoil layer should look like.
+    addMaterial(
+        glm::vec4(0.05f, 0.05f, 0.05f, 1.0f),  // amb
+        glm::vec4(0.20f, 0.20f, 0.30f, 1.0f),  // diff
+        glm::vec4(0.05f, 0.05f, 0.05f, 1.0f),  // spec
+        3.0f                                    // shine
     );
 
     
@@ -66,7 +74,8 @@ const char *Materials::paletteName(int index)
         "Grass",
         "Stone",
         "Brick Red",
-        "Sand"
+        "Sand",
+        "Dirt"
     };
 
     if (index < 0 || index >= paletteCount) {
