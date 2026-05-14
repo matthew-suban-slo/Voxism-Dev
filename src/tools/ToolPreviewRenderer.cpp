@@ -68,7 +68,6 @@ void ToolPreviewRenderer::draw(const ToolPreview &preview,
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glLineWidth(2.0f);
     glDrawArrays(GL_LINES, 0, 24);
     glDisable(GL_BLEND);
     glEnable(GL_CULL_FACE);

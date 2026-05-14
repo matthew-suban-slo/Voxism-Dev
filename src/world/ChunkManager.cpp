@@ -3,6 +3,8 @@
 #include <cmath>
 #include <limits>
 
+#include "VoxelMath.h"
+
 ChunkManager::ChunkManager(
     int voxPerMeter,
     float chunkSizeMeters,
@@ -121,6 +123,60 @@ bool ChunkManager::isVoxelOccupied(const glm::ivec3 &voxel)
     }
     const glm::ivec3 local = worldToLocalVoxel(voxel);
     return chunk->isOccupiedLocal(local.x, local.y, local.z);
+}
+
+bool ChunkManager::isAnyVoxelOccupied(const glm::ivec3 &minVoxel, const glm::ivec3 &maxVoxel) const
+{
+    const int chunkSizeVoxels = chunkSizeInts * 32;
+    const ChunkPos minChunk = {
+        floorDiv(minVoxel.x, chunkSizeVoxels),
+        floorDiv(minVoxel.y, chunkSizeVoxels),
+        floorDiv(minVoxel.z, chunkSizeVoxels)
+    };
+    const ChunkPos maxChunk = {
+        floorDiv(maxVoxel.x, chunkSizeVoxels),
+        floorDiv(maxVoxel.y, chunkSizeVoxels),
+        floorDiv(maxVoxel.z, chunkSizeVoxels)
+    };
+
+    for (int chunkZ = minChunk.z; chunkZ <= maxChunk.z; ++chunkZ) {
+        for (int chunkY = minChunk.y; chunkY <= maxChunk.y; ++chunkY) {
+            for (int chunkX = minChunk.x; chunkX <= maxChunk.x; ++chunkX) {
+                const ChunkPos chunkPos {chunkX, chunkY, chunkZ};
+                const auto chunk = getChunk(chunkPos);
+                if (!chunk) {
+                    continue;
+                }
+
+                const glm::ivec3 chunkVoxelMin(
+                    chunkX * chunkSizeVoxels,
+                    chunkY * chunkSizeVoxels,
+                    chunkZ * chunkSizeVoxels);
+                const glm::ivec3 chunkVoxelMax = chunkVoxelMin + glm::ivec3(chunkSizeVoxels - 1);
+                const glm::ivec3 clippedMin = glm::max(minVoxel, chunkVoxelMin);
+                const glm::ivec3 clippedMax = glm::min(maxVoxel, chunkVoxelMax);
+
+                const int localMinX = clippedMin.x - chunkVoxelMin.x;
+                const int localMinY = clippedMin.y - chunkVoxelMin.y;
+                const int localMinZ = clippedMin.z - chunkVoxelMin.z;
+                const int localMaxX = clippedMax.x - chunkVoxelMin.x;
+                const int localMaxY = clippedMax.y - chunkVoxelMin.y;
+                const int localMaxZ = clippedMax.z - chunkVoxelMin.z;
+
+                for (int localZ = localMinZ; localZ <= localMaxZ; ++localZ) {
+                    for (int localY = localMinY; localY <= localMaxY; ++localY) {
+                        for (int localX = localMinX; localX <= localMaxX; ++localX) {
+                            if (chunk->isOccupiedLocal(localX, localY, localZ)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 bool ChunkManager::raycastVoxels(const glm::vec3 &origin,

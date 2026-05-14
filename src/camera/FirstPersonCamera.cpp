@@ -358,18 +358,7 @@ bool FirstPersonCamera::CollidesAt(glm::vec3 eye_pos) const
 
     const glm::ivec3 min_voxel = chunk_manager_->worldToVoxel(aabb_min);
     const glm::ivec3 max_voxel = chunk_manager_->worldToVoxel(aabb_max);
-
-    for (int z = min_voxel.z; z <= max_voxel.z; z++) {
-        for (int y = min_voxel.y; y <= max_voxel.y; y++) {
-            for (int x = min_voxel.x; x <= max_voxel.x; x++) {
-                if (chunk_manager_->isVoxelOccupied(glm::ivec3(x, y, z))) {
-                    return true;
-                }
-            }
-        }
-    }
-
-    return false;
+    return chunk_manager_->isAnyVoxelOccupied(min_voxel, max_voxel);
 }
 
 bool FirstPersonCamera::ResolveAxisMove(int axis, float delta)
@@ -381,6 +370,7 @@ bool FirstPersonCamera::ResolveAxisMove(int axis, float delta)
     const float voxel_step = std::max(0.01f, chunk_manager_->voxSizeMeters * 0.5f);
     float remaining = delta;
     bool collided = false;
+    bool attemptedStepUp = false;
 
     while (std::abs(remaining) > kCollisionEpsilon) {
         const float step = glm::clamp(remaining, -voxel_step, voxel_step);
@@ -388,10 +378,13 @@ bool FirstPersonCamera::ResolveAxisMove(int axis, float delta)
         candidate[axis] += step;
 
         if (CollidesAt(candidate)) {
-            // if ((axis == 0 || axis == 2) && TryStepUpAxisMove(axis, step)) {
-            //     remaining -= step;
-            //     continue;
-            // }
+            if (!attemptedStepUp && (axis == 0 || axis == 2)) {
+                attemptedStepUp = true;
+                if (TryStepUpAxisMove(axis, step)) {
+                    remaining -= step;
+                    continue;
+                }
+            }
             // player_pos[axis] += ResolveCollidingStep(axis, step);
             collided = true;
             break;
@@ -520,7 +513,7 @@ bool FirstPersonCamera::ProbeGrounded() const
 
 void FirstPersonCamera::NudgeOutOfCollision()
 {
-    if (!chunk_manager_ || !CollidesAt(player_pos)) {
+    if (!chunk_manager_) {
         return;
     }
 
