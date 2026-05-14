@@ -1,23 +1,27 @@
 #pragma once
 
-#include <memory>
 #include <string>
-
-// Forward-declare miniaudio types so the header doesn't drag the 4MB single-header
-// implementation into every translation unit. We hold them by std::unique_ptr in
-// the impl wrapper.
-struct ma_engine;
-struct ma_sound;
+#include <unordered_map>
+#include <vector>
 
 /**
- * SoundtrackPlayer — plays an MP3 from disk on a continuous loop.
+ * SoundtrackPlayer — audio system for music + SFX.
  *
- * Usage:
- *   SoundtrackPlayer player;
- *   player.init();                                  // start audio engine
- *   player.playLoop("resources/soundtrack/foo.mp3"); // begin looping playback
- *   ...
- *   // Destructor stops playback and shuts down the engine cleanly.
+ * - The "music" channel streams a single MP3 from disk on a continuous loop.
+ * - The "SFX" channel pre-decodes short OGG clips into memory at load time and
+ *   plays them through a small per-clip voice pool so rapid triggers layer
+ *   instead of cutting each other off.
+ *
+ * Why both: miniaudio's built-in resource manager doesn't decode OGG/Vorbis
+ * (it's not bundled for licensing reasons). We use stb_vorbis to pre-decode
+ * SFX into raw PCM, then play through an ma_audio_buffer data source. MP3 is
+ * decoded by miniaudio's built-in dr_mp3 backend so the music stream works
+ * out of the box.
+ *
+ * The miniaudio types are kept entirely inside the .cpp via an opaque PIMPL
+ * struct. The header doesn't pull in miniaudio.h (which on Windows
+ * transitively includes mmsystem.h and breaks stb_vorbis with macro
+ * collisions).
  *
  * Thread-safety: not thread-safe. Call from a single thread (typically main).
  */
@@ -39,17 +43,28 @@ public:
      */
     bool playLoop(const std::string& path);
 
-    /** Stop playback and unload the current track. Engine remains initialized. */
+    /** Stop music playback and unload the current track. Engine remains initialized. */
     void stop();
 
-    /** Optional: linear gain multiplier in [0, 1+]. Default 1.0. */
+    /** Music gain multiplier in [0, 1+]. Default 1.0. */
     void setVolume(float volume);
 
-    bool isInitialized() const { return engine_ != nullptr; }
+    /**
+     * Pre-load an OGG/Vorbis SFX from `path`, registering it under `id` for
+     * later playback. Allocates a small voice pool per clip (default 4) so
+     * rapid triggers can overlap rather than cut. Returns false on failure.
+     */
+    bool loadSfx(const std::string& id, const std::string& path, int voices = 4);
+
+    /**
+     * Play a previously-loaded SFX by id. Picks the next free voice from the
+     * pool (round-robin if all are busy). No-op if id is unknown.
+     */
+    bool playSfx(const std::string& id);
+
+    bool isInitialized() const;
 
 private:
-    std::unique_ptr<ma_engine> engine_;
-    std::unique_ptr<ma_sound>  sound_;
-    bool soundLoaded_ = false;
-    float volume_ = 1.0f;
+    struct Impl;
+    Impl* impl_ = nullptr;
 };

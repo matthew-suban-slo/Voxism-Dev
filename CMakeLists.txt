@@ -49,6 +49,7 @@ set(CMAKE_CXX_STANDARD 14)
 # files (e.g. src/world/*.cpp) are picked up without manually re-running cmake.
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/audio/*.c"
     "${CMAKE_SOURCE_DIR}/ext/*/*.cpp"
     "${CMAKE_SOURCE_DIR}/ext/glad/src/*.c")
 # Exclude standalone test files (they define their own main())
