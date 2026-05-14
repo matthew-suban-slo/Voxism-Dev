@@ -22,12 +22,12 @@ void Materials::init(GLuint bindingPoint){
         glm::vec4(0.24, 0.41, 0.24, 1.0), // specular (very subtle, slightly green)
         15.0f // shininess (broad highlight)
     );
-    // basic Stone
+    // basic Stone (gray)
     addMaterial(
-        glm::vec4(0.05, 0.05, 0.05, 1.0), // amb
-        glm::vec4(0.2, 0.2, 0.3, 1.0), // diff
-        glm::vec4(0.05, 0.05, 0.05, 1.0), // spec
-        3 // shine
+        glm::vec4(0.07f, 0.07f, 0.07f, 1.0f),  // amb
+        glm::vec4(0.38f, 0.38f, 0.38f, 1.0f),  // diff (darker medium gray)
+        glm::vec4(0.14f, 0.14f, 0.14f, 1.0f),  // spec
+        4.0f                                    // shine
     );
     // brick
     addMaterial(
@@ -42,6 +42,20 @@ void Materials::init(GLuint bindingPoint){
         glm::vec4(0.72f, 0.63f, 0.30f, 1.0f),
         glm::vec4(0.22f, 0.20f, 0.12f, 1.0f),
         10.0f
+    );
+    // dirt — earthy brown subsoil layer.
+    addMaterial(
+        glm::vec4(0.10f, 0.06f, 0.03f, 1.0f),  // amb (deep brown)
+        glm::vec4(0.42f, 0.26f, 0.12f, 1.0f),  // diff (saturated warm brown)
+        glm::vec4(0.08f, 0.05f, 0.03f, 1.0f),  // spec (very low — dirt is matte)
+        4.0f                                    // shine
+    );
+    // gold — strong yellow-gold with a tight, bright specular highlight.
+    addMaterial(
+        glm::vec4(0.20f, 0.14f, 0.02f, 1.0f),  // amb (warm)
+        glm::vec4(0.95f, 0.78f, 0.18f, 1.0f),  // diff (rich gold)
+        glm::vec4(1.00f, 0.92f, 0.50f, 1.0f),  // spec (bright, slightly warm white)
+        128.0f                                  // shine (very tight highlight)
     );
 
     
@@ -66,7 +80,9 @@ const char *Materials::paletteName(int index)
         "Grass",
         "Stone",
         "Brick Red",
-        "Sand"
+        "Sand",
+        "Dirt",
+        "Gold"
     };
 
     if (index < 0 || index >= paletteCount) {

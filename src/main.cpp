@@ -33,6 +33,7 @@
 #include "Crosshair.h"
 #include "tools/ToolManager.h"
 #include "tools/ToolPreviewRenderer.h"
+#include "audio/SoundtrackPlayer.h"
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_glfw.h>
@@ -271,6 +272,42 @@ public:
 		const char *glsl_version = "#version 330";
 		ImGui_ImplGlfw_InitForOpenGL(windowManager->getHandle(), true);
 		ImGui_ImplOpenGL3_Init(glsl_version);
+
+		// --- Soundtrack: start looping background music. Non-fatal on failure. ---
+		if (soundtrack_.init()) {
+			soundtrack_.setVolume(musicVolume_);
+			const string trackPath =
+				resourceDirectory + "/soundtrack/Porter Robinson - Lifelike (Official Audio).mp3";
+			if (!soundtrack_.playLoop(trackPath)) {
+				cerr << "Soundtrack: failed to start '" << trackPath << "'" << endl;
+			}
+
+			// --- SFX: pre-decode the 4 break/place stone clips into voice pools. ---
+			for (int i = 1; i <= 4; ++i) {
+				const string idB = "break" + std::to_string(i);
+				const string idP = "place" + std::to_string(i);
+				const string pathB = resourceDirectory + "/sfx/break/stone" + std::to_string(i) + ".ogg";
+				const string pathP = resourceDirectory + "/sfx/place/stone" + std::to_string(i) + ".ogg";
+				if (soundtrack_.loadSfx(idB, pathB)) breakSfxIds_.push_back(idB);
+				if (soundtrack_.loadSfx(idP, pathP)) placeSfxIds_.push_back(idP);
+			}
+		}
+	}
+
+	/** Play a random break sfx (from sfx/break/stone1..4.ogg). Non-fatal. */
+	void playBreakSfx()
+	{
+		if (breakSfxIds_.empty()) return;
+		std::uniform_int_distribution<size_t> dist(0, breakSfxIds_.size() - 1);
+		soundtrack_.playSfx(breakSfxIds_[dist(sfxRng_)]);
+	}
+
+	/** Play a random place sfx (from sfx/place/stone1..4.ogg). Non-fatal. */
+	void playPlaceSfx()
+	{
+		if (placeSfxIds_.empty()) return;
+		std::uniform_int_distribution<size_t> dist(0, placeSfxIds_.size() - 1);
+		soundtrack_.playSfx(placeSfxIds_[dist(sfxRng_)]);
 	}
 
 	void initPostProcessShaders(const string &resourceDirectory)
@@ -801,6 +838,8 @@ public:
 			glm::vec3 forward = glm::normalize(camera->GetForward());
 			if (toolManager_.beginAction(*chunkManager, eye, forward, mode)) {
 				toolView_.triggerUse();
+				if (mode == ToolMode::Build)  playPlaceSfx();
+				else                          playBreakSfx();
 			}
 		}
 		if ((button == GLFW_MOUSE_BUTTON_LEFT || button == GLFW_MOUSE_BUTTON_RIGHT) && action == GLFW_RELEASE) {
@@ -859,6 +898,7 @@ public:
 			const glm::vec3 forward = glm::normalize(camera->GetForward());
 			if (toolManager_.updateAction(*chunkManager, eye, forward, ToolMode::Build)) {
 				toolView_.triggerUse();
+				playPlaceSfx();
 			}
 		}
 		if (mouseLocked_ && rightMouseDown_ && toolManager_.supportsContinuousAction(ToolMode::Delete)) {
@@ -866,6 +906,7 @@ public:
 			const glm::vec3 forward = glm::normalize(camera->GetForward());
 			if (toolManager_.updateAction(*chunkManager, eye, forward, ToolMode::Delete)) {
 				toolView_.triggerUse();
+				playBreakSfx();
 			}
 		}
 		
@@ -1076,6 +1117,10 @@ public:
 		ImGui::Checkbox("Bloom", &postToggles_.bloomEnabled);
 		ImGui::Checkbox("SSAO", &postToggles_.ssaoEnabled);
 
+		if (ImGui::SliderFloat("Music", &musicVolume_, 0.0f, 1.0f, "%.2f")) {
+			soundtrack_.setVolume(musicVolume_);
+		}
+
 		ImGui::End();
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -1152,6 +1197,12 @@ private:
 	double lastMouseX_ = 0.0, lastMouseY_ = 0.0;
 
 	double lastStatsPrint_ = 0.0;
+
+	SoundtrackPlayer soundtrack_;
+	float musicVolume_ = 0.15f;                 // matches debug slider default
+	std::vector<std::string> breakSfxIds_;
+	std::vector<std::string> placeSfxIds_;
+	std::mt19937 sfxRng_{std::random_device{}()};
 };
 
 int main(int argc, char *argv[])

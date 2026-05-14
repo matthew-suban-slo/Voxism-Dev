@@ -49,6 +49,7 @@ set(CMAKE_CXX_STANDARD 14)
 # files (e.g. src/world/*.cpp) are picked up without manually re-running cmake.
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/audio/*.c"
     "${CMAKE_SOURCE_DIR}/ext/*/*.cpp"
     "${CMAKE_SOURCE_DIR}/ext/glad/src/*.c")
 # Exclude standalone test files (they define their own main())
@@ -83,14 +84,21 @@ if(NOT WIN32)
   if(APPLE)
     # Add required frameworks for GLFW.
     target_link_libraries(${CMAKE_PROJECT_NAME} "-framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo")
+    # miniaudio backends on macOS
+    target_link_libraries(${CMAKE_PROJECT_NAME} "-framework CoreAudio -framework AudioToolbox -framework CoreFoundation")
   else()
     #Link the Linux OpenGL library
     target_link_libraries(${CMAKE_PROJECT_NAME} "GL" "dl")
+    # miniaudio on Linux needs pthread and libm (dl already linked above)
+    find_package(Threads REQUIRED)
+    target_link_libraries(${CMAKE_PROJECT_NAME} Threads::Threads "m")
   endif()
 
 else()
 
   # Link OpenGL on Windows
   target_link_libraries(${CMAKE_PROJECT_NAME} opengl32.lib)
+  # miniaudio uses WASAPI on Windows; ole32 provides COM init it relies on.
+  target_link_libraries(${CMAKE_PROJECT_NAME} ole32.lib)
 
 endif()
