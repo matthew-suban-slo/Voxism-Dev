@@ -26,9 +26,10 @@ class Materials {
             Stone = 1,
             Brick = 2,
             Sand = 3,
-            Dirt = 4
+            Dirt = 4,
+            Gold = 5
         };
-        const static int paletteCount = 5;
+        const static int paletteCount = 6;
 
         Materials();
 
