@@ -141,6 +141,64 @@ static std::string shaderPath(const std::string& resourceDir,
     return resourceDir + "/shaders/" + category + "/" + filename;
 }
 
+// ---------------------------------------------------------------------------
+// CPU-only helper: project the world-space sun position into screen UV and
+// classify visibility. Pure CPU code (no GL types, no GL calls) so it can be
+// unit-tested without an OpenGL context.
+//
+// Returns:
+//   sunScreen      — UV in [0, 1] when sunVisible; sentinel (0.5, 0.55) when not
+//   sunVisible     — true iff sunClip.w > 0.001f AND sunVisibleFade > 0
+//   sunVisibleFade — 0..1 multiplier applied to godrayStrength at composite time
+//
+// kMargin defines the smooth-fade window (in UV space) around [0, 1] so the
+// godray contribution does not pop on/off as the sun crosses the frustum edge.
+// ---------------------------------------------------------------------------
+namespace {
+
+struct SunProjection {
+    glm::vec2 sunScreen;      // UV in [0,1]; valid only when sunVisible
+    bool      sunVisible;     // sunClip.w > 0.001f AND sunVisibleFade > 0
+    float     sunVisibleFade; // 0..1; multiplies godrayStrength
+};
+
+SunProjection projectSunToScreen(const glm::mat4& P, const glm::mat4& V,
+                                 const glm::vec3& sunWorld,
+                                 float kMargin = 0.15f)
+{
+    SunProjection out;
+    out.sunScreen      = glm::vec2(0.5f, 0.55f); // sentinel matches pre-fix default
+    out.sunVisible     = false;
+    out.sunVisibleFade = 0.0f;
+
+    const glm::vec4 sunClip = P * V * glm::vec4(sunWorld, 1.0f);
+    if (sunClip.w > 0.001f) {
+        const glm::vec2 uv((sunClip.x / sunClip.w) * 0.5f + 0.5f,
+                           (sunClip.y / sunClip.w) * 0.5f + 0.5f);
+
+        // Per-axis margin-clamp fade. Equals 1.0 strictly inside [0,1], decays
+        // linearly to 0 across the kMargin window past each boundary.
+        const float kSafeMargin = (kMargin > 0.0f) ? kMargin : 1e-6f;
+        const float fx = glm::clamp(
+            1.0f - std::max(0.0f, std::max(-uv.x, uv.x - 1.0f)) / kSafeMargin,
+            0.0f, 1.0f);
+        const float fy = glm::clamp(
+            1.0f - std::max(0.0f, std::max(-uv.y, uv.y - 1.0f)) / kSafeMargin,
+            0.0f, 1.0f);
+
+        const float fade = fx * fy;
+        if (fade > 0.0f) {
+            out.sunScreen      = uv;
+            out.sunVisibleFade = fade;
+            out.sunVisible     = true;
+        }
+    }
+
+    return out;
+}
+
+} // namespace
+
 struct PostProcessToggle {
     bool godRaysEnabled  = false;
     bool bloomEnabled    = false;
@@ -322,14 +380,6 @@ public:
 		godrayProg_->addUniform("sunPos");
 		godrayProg_->addUniform("time");
 
-		sunMaskProg_ = make_shared<Program>();
-		sunMaskProg_->setVerbose(true);
-		sunMaskProg_->setShaderNames(shaderPath(resourceDirectory, "postprocess", "screen_vert.glsl"),
-		                             shaderPath(resourceDirectory, "postprocess", "sunmask_frag.glsl"));
-		if (!sunMaskProg_->init())
-			cerr << "sunMaskProg failed" << endl;
-		sunMaskProg_->addUniform("sunPos");
-
 		bloomBrightProg_ = make_shared<Program>();
 		bloomBrightProg_->setVerbose(true);
 		bloomBrightProg_->setShaderNames(shaderPath(resourceDirectory, "postprocess", "screen_vert.glsl"),
@@ -431,14 +481,6 @@ public:
 			glDeleteTextures(1, &godrayTex_);
 			godrayTex_ = 0;
 		}
-		if (godraySrcFBO_) {
-			glDeleteFramebuffers(1, &godraySrcFBO_);
-			godraySrcFBO_ = 0;
-		}
-		if (godraySrcTex_) {
-			glDeleteTextures(1, &godraySrcTex_);
-			godraySrcTex_ = 0;
-		}
 		for (int i = 0; i < 2; i++) {
 			if (pingpongFBO_[i]) {
 				glDeleteFramebuffers(1, &pingpongFBO_[i]);
@@ -531,18 +573,6 @@ public:
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, godrayTex_, 0);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		glGenFramebuffers(1, &godraySrcFBO_);
-		glBindFramebuffer(GL_FRAMEBUFFER, godraySrcFBO_);
-		glGenTextures(1, &godraySrcTex_);
-		glBindTexture(GL_TEXTURE_2D, godraySrcTex_);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, w, h, 0, GL_RGB, GL_FLOAT, nullptr);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, godraySrcTex_, 0);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		int hw = std::max(1, w / 2);
@@ -976,11 +1006,10 @@ public:
 			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		vec4 sunClip = P * V * vec4(sunWorld_, 1.0f);
-		vec2 sunScreen(0.5f, 0.55f);
-		if (std::abs(sunClip.w) > 0.001f) {
-			sunScreen = vec2((sunClip.x / sunClip.w) * 0.5f + 0.5f, (sunClip.y / sunClip.w) * 0.5f + 0.5f);
-		}
+		const SunProjection sunProj = projectSunToScreen(P, V, sunWorld_);
+		const vec2  sunScreen      = sunProj.sunScreen;
+		const bool  sunVisible     = sunProj.sunVisible;
+		const float sunVisibleFade = sunProj.sunVisibleFade;
 
 		// --- SSAO pass (conditional) ---
 		if (postToggles_.ssaoEnabled) {
@@ -988,24 +1017,14 @@ public:
 		}
 
 		// --- God rays (conditional) ---
-		if (postToggles_.godRaysEnabled) {
-			glBindFramebuffer(GL_FRAMEBUFFER, godraySrcFBO_);
-			glViewport(0, 0, postW_, postH_);
-			glClearColor(0.18f, 0.22f, 0.34f, 1.0f);
-			glClear(GL_COLOR_BUFFER_BIT);
-			sunMaskProg_->bind();
-			glUniform2f(sunMaskProg_->getUniform("sunPos"), sunScreen.x, sunScreen.y);
-			drawFullscreenQuad();
-			sunMaskProg_->unbind();
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-			// --- God rays (from sun mask, not full scene) ---
+		if (postToggles_.godRaysEnabled && sunVisible) {
+			// Source the radial blur from the real scene HDR buffer (matches CSC471 ref).
 			glBindFramebuffer(GL_FRAMEBUFFER, godrayFBO_);
 			glViewport(0, 0, postW_, postH_);
 			glClear(GL_COLOR_BUFFER_BIT);
 			godrayProg_->bind();
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, godraySrcTex_);
+			glBindTexture(GL_TEXTURE_2D, sceneColorTex_);
 			glUniform1i(godrayProg_->getUniform("sceneTex"), 0);
 			glUniform2f(godrayProg_->getUniform("sunPos"), sunScreen.x, sunScreen.y);
 			glUniform1f(godrayProg_->getUniform("time"), (float)glfwGetTime());
@@ -1051,7 +1070,9 @@ public:
 		}
 
 		// --- Composite to default framebuffer ---
-		float godrayStrength = postToggles_.godRaysEnabled ? postToggles_.godrayStrength : 0.0f;
+		float godrayStrength = (postToggles_.godRaysEnabled && sunVisible)
+		                       ? postToggles_.godrayStrength * sunVisibleFade
+		                       : 0.0f;
 		float bloomStrength  = postToggles_.bloomEnabled   ? postToggles_.bloomStrength  : 0.0f;
 		glViewport(0, 0, width, height);
 		glClearColor(0.06f, 0.07f, 0.09f, 1.0f);
@@ -1151,7 +1172,6 @@ private:
 
 	shared_ptr<Program> texProg_;
 	shared_ptr<Program> godrayProg_, bloomBrightProg_, blurProg_, compositeProg_;
-	shared_ptr<Program> sunMaskProg_;
 	shared_ptr<Program> chunkProg_;
 	shared_ptr<Program> ssaoProg_;
 	shared_ptr<Program> ssaoBlurProg_;
@@ -1173,7 +1193,6 @@ private:
 	GLuint sceneDepthTex_ = 0;
 	GLuint sceneDepthRBO_ = 0;
 	GLuint godrayFBO_ = 0, godrayTex_ = 0;
-	GLuint godraySrcFBO_ = 0, godraySrcTex_ = 0;
 	GLuint pingpongFBO_[2] = {0, 0};
 	GLuint pingpongTex_[2] = {0, 0};
 	GLuint ssaoFBO_ = 0, ssaoBlurFBO_ = 0;
