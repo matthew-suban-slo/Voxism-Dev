@@ -837,7 +837,9 @@ public:
 			glm::vec3 eye = camera->GetCameraPos();
 			glm::vec3 forward = glm::normalize(camera->GetForward());
 			if (toolManager_.beginAction(*chunkManager, eye, forward, mode)) {
-				toolView_.triggerUse();
+				if (!toolManager_.supportsContinuousAction(mode)) {
+					toolView_.triggerUse();
+				}
 				if (mode == ToolMode::Build)  playPlaceSfx();
 				else                          playBreakSfx();
 			}
@@ -892,12 +894,15 @@ public:
 	{
 		vec3 wish = (static_cast<float>(keyW_) - static_cast<float>(keyS_)) * vec3(1,1,1) + (static_cast<float>(keyD_) - static_cast<float>(keyA_)) * vec3(1,1,1);
 		camera->UpdateCamera(dt);
+		const bool organicInUse =
+			toolManager_.supportsContinuousAction(ToolMode::Build) &&
+			(mouseLocked_ && (leftMouseDown_ || rightMouseDown_));
+		toolView_.setContinuousUseActive(organicInUse);
 
 		if (mouseLocked_ && leftMouseDown_ && toolManager_.supportsContinuousAction(ToolMode::Build)) {
 			const glm::vec3 eye = camera->GetCameraPos();
 			const glm::vec3 forward = glm::normalize(camera->GetForward());
 			if (toolManager_.updateAction(*chunkManager, eye, forward, ToolMode::Build)) {
-				toolView_.triggerUse();
 				playPlaceSfx();
 			}
 		}
@@ -905,7 +910,6 @@ public:
 			const glm::vec3 eye = camera->GetCameraPos();
 			const glm::vec3 forward = glm::normalize(camera->GetForward());
 			if (toolManager_.updateAction(*chunkManager, eye, forward, ToolMode::Delete)) {
-				toolView_.triggerUse();
 				playBreakSfx();
 			}
 		}

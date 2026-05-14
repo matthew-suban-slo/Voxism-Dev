@@ -39,6 +39,7 @@ public:
 	void setAnimTime(float t) { animTime_ = t; }
 	void setMoveBlend(float b) { moveBlend_ = b; }
 	void setUseBob(bool useBob) { useBob_ = useBob; }
+	void setContinuousUseActive(bool active) { continuousUseActive_ = active; }
 
 	void triggerUse();
 	void update(float dt);
@@ -66,6 +67,8 @@ private:
 	bool useAnimating_ = false;
 	float useAnimTime_ = 0.0f;
 	float useAnimDuration_ = 0.18f;
+	bool continuousUseActive_ = false;
+	float continuousUseTime_ = 0.0f;
 
 	glm::vec3 offset_ = glm::vec3(-100.0f, 0.0f, 0.0f);
 	glm::vec3 rotationDeg_ = glm::vec3(0.0f, 0.0f, 0.0f);

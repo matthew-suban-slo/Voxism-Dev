@@ -25,7 +25,7 @@ public:
         ToolMode mode) const;
     void cycleSize(int direction);
     void cycleMaterial(int direction);
-    float radiusMeters() const { return radiusMeters_; }
+    float radiusMeters() const { return sizeMeters_; }
     int materialIndex() const { return paletteIndex_; }
 
 private:
@@ -36,8 +36,9 @@ private:
         bool updateLastCenter);
     glm::vec3 currentStrokeCenter(const glm::vec3 &origin, const glm::vec3 &direction) const;
     ToolPreview makePreview(const glm::vec3 &center, float voxelSizeMeters, ToolMode mode) const;
+    float sphereRadiusMeters() const { return sizeMeters_ * 0.5f; }
 
-    float radiusMeters_ = 1.0f;
+    float sizeMeters_ = 1.0f;
     int paletteIndex_ = 1;
     bool strokeActive_ = false;
     float strokeDistance_ = 0.0f;

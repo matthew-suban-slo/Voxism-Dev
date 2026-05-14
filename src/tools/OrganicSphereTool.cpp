@@ -37,8 +37,9 @@ ToolPreview OrganicSphereTool::makePreview(const glm::vec3 &center, float voxelS
     ToolPreview preview;
     preview.valid = true;
     preview.mode = mode;
-    preview.minVoxel = worldMinVoxel(center, radiusMeters_, voxelSizeMeters);
-    preview.maxVoxel = worldMaxVoxel(center, radiusMeters_, voxelSizeMeters);
+    const float radiusMeters = sphereRadiusMeters();
+    preview.minVoxel = worldMinVoxel(center, radiusMeters, voxelSizeMeters);
+    preview.maxVoxel = worldMaxVoxel(center, radiusMeters, voxelSizeMeters);
     return preview;
 }
 
@@ -54,7 +55,8 @@ ToolUseResult OrganicSphereTool::applyStrokeSegment(const glm::vec3 &center,
     if (!strokeActive_) {
         centers.push_back(center);
     } else {
-        const float spacing = std::max(voxelSizeMeters, radiusMeters_ * 0.35f);
+        const float radiusMeters = sphereRadiusMeters();
+        const float spacing = std::max(voxelSizeMeters, radiusMeters * 0.35f);
         const glm::vec3 delta = center - lastCenter_;
         const float distance = glm::length(delta);
         if (distance <= 0.0001f) {
@@ -70,9 +72,10 @@ ToolUseResult OrganicSphereTool::applyStrokeSegment(const glm::vec3 &center,
     }
 
     result.consumed = true;
+    const float radiusMeters = sphereRadiusMeters();
     result.modifier = std::make_shared<StrokeSphereChunkModifier>(
         centers,
-        radiusMeters_,
+        radiusMeters,
         chunkSizeVoxels,
         voxelSizeMeters,
         mode == ToolMode::Build,
@@ -130,8 +133,8 @@ ToolPreview OrganicSphereTool::preview(const glm::vec3 &origin,
 void OrganicSphereTool::cycleSize(int direction)
 {
     const float kStep = 0.25f;
-    radiusMeters_ += (direction > 0) ? kStep : -kStep;
-    radiusMeters_ = glm::clamp(radiusMeters_, 0.25f, 8.0f);
+    sizeMeters_ += (direction > 0) ? kStep : -kStep;
+    sizeMeters_ = glm::clamp(sizeMeters_, 0.25f, 8.0f);
 }
 
 void OrganicSphereTool::cycleMaterial(int direction)

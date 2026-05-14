@@ -142,13 +142,18 @@ void ToolView::triggerUse(){
 
 
 void ToolView::update(float dt){
-	if (!useAnimating_)
-		return;
+	if (continuousUseActive_) {
+		continuousUseTime_ += dt;
+	} else {
+		continuousUseTime_ = 0.0f;
+	}
 
-	useAnimTime_ += dt;
-	if (useAnimTime_ >= useAnimDuration_) {
-		useAnimTime_ = useAnimDuration_;
-		useAnimating_ = false;
+	if (useAnimating_) {
+		useAnimTime_ += dt;
+		if (useAnimTime_ >= useAnimDuration_) {
+			useAnimTime_ = useAnimDuration_;
+			useAnimating_ = false;
+		}
 	}
 }
 
@@ -176,17 +181,20 @@ void ToolView::draw(int width,
 		localOffset += glm::vec3(swayX, swayY, 0.0f);
 	}
 
+	float useT = 0.0f;
+	if (useAnimDuration_ > 0.0f)
+		useT = glm::clamp(useAnimTime_ / useAnimDuration_, 0.0f, 1.0f);
 
+	float dip = sin(useT * 3.14159265f);
 
-    float useT = 0.0f;
-    if (useAnimDuration_ > 0.0f)
-        useT = glm::clamp(useAnimTime_ / useAnimDuration_, 0.0f, 1.0f);
+	glm::vec3 animOffset(0.0f);
 
-    float dip = sin(useT * 3.14159265f);
-
-    glm::vec3 animOffset(0.0f);
-
-    animOffset += cameraForward * (-0.10f * dip);
+	if (continuousUseActive_) {
+		const float swing = sin(continuousUseTime_ * 12.0f);
+		animOffset += cameraForward * (-0.06f * swing);
+	} else {
+		animOffset += cameraForward * (-0.10f * dip);
+	}
 
 	glm::vec3 toolWorldPos =
 		cameraPos +
@@ -217,7 +225,7 @@ void ToolView::draw(int width,
 	glUniform3fv(prog_->getUniform("camPos"), 1, glm::value_ptr(cameraPos));
 	glUniform3fv(prog_->getUniform("lightColor"), 1, glm::value_ptr(lightColor));
 
-	glUniform3f(prog_->getUniform("matAmbient"), 0.18f, 0.18f, 0.18f);
+	glUniform3f(prog_->getUniform("matAmbient"), 0.35f, 0.35f, 0.35f);
 	glUniform3f(prog_->getUniform("matDiffuse"), 0.95f, 0.95f, 0.95f);
 	glUniform3f(prog_->getUniform("matSpecular"), 0.35f, 0.35f, 0.35f);
 	glUniform1f(prog_->getUniform("shininess"), 20.0f);
