@@ -16,8 +16,7 @@ public:
 	~ToolView() = default;
 
 	bool init(const std::string &resourceDirectory,
-          const std::shared_ptr<Program> &litProgram,
-          GLuint textureID);
+          const std::shared_ptr<Program> &litProgram);
 
     void draw(int width,
           int height,
@@ -47,7 +46,6 @@ public:
 private:
 	static void computeNormals(tinyobj::mesh_t &mesh);
 	static void ensureTexcoordsXZ(tinyobj::shape_t &sh);
-	static std::vector<float> loadVertexColors(const std::string &path, size_t expectedVertexCount);
 	static std::shared_ptr<Shape> loadMesh(const std::string &resourceDirectory,
 	                                       const char *primaryName,
 	                                       const char *fallbackName);
@@ -55,8 +53,7 @@ private:
 private:
 	std::shared_ptr<Program> prog_;
 	std::shared_ptr<Shape> mesh_;
-
-	GLuint textureID_ = 0;
+	std::shared_ptr<Texture> texture_;
 
 	bool visible_ = true;
 	bool useBob_ = true;
