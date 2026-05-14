@@ -234,17 +234,10 @@ public:
 
 		groundTexGl_ = makeGroundCheckerTexture(256);
 
-		skybox_.init(resourceDirectory, "sky_equirect.jpg");
+		skybox_.init(resourceDirectory, "skybox", "png");
 
 		world_.reset();
 		fpvCamera.SetChunkManager(chunkManager.get());
-
-		glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 3 * 4096, nullptr, GL_DYNAMIC_DRAW);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-		glBindVertexArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-
 
 		initPostProcessShaders(resourceDirectory);
 
@@ -1117,7 +1110,7 @@ private:
 	shared_ptr<ChunkManager> chunkManager = make_shared<ChunkManager>(
 	16,// voxPerMeter 
 	16,// chunkSizeMeters
-	16,// renderDistance (in meters)
+	32,// renderDistance (in meters)
 	16// renderHeight (int meters)
 	);
 
